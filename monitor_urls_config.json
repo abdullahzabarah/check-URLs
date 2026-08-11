@@ -1,0 +1,5 @@
+{
+  "default_file": "urls.txt",
+  "slack_webhook_url": "SLACK_WEBHOOK_URL",
+  "slack_enabled": true
+}

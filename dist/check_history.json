@@ -1,0 +1,42 @@
+[
+  {
+    "checked_at": "2026-09-09 13:37:01",
+    "source": "urls.txt",
+    "total": 29,
+    "healthy": 20,
+    "warning": 5,
+    "error": 4,
+    "elapsed": 21.37,
+    "stopped": false
+  },
+  {
+    "checked_at": "2026-09-09 13:41:29",
+    "source": "urls.txt",
+    "total": 29,
+    "healthy": 20,
+    "warning": 5,
+    "error": 4,
+    "elapsed": 20.52,
+    "stopped": false
+  },
+  {
+    "checked_at": "2026-09-09 13:41:50",
+    "source": "Specific URL",
+    "total": 1,
+    "healthy": 1,
+    "warning": 0,
+    "error": 0,
+    "elapsed": 0.58,
+    "stopped": false
+  },
+  {
+    "checked_at": "2026-09-09 13:42:24",
+    "source": "urls.txt",
+    "total": 29,
+    "healthy": 19,
+    "warning": 5,
+    "error": 5,
+    "elapsed": 21.31,
+    "stopped": false
+  }
+]

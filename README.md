@@ -23,3 +23,9 @@ python check_urls_app.py
 Put one URL per line in `urls.txt`. Lines that are invalid or duplicated are reported and skipped before network requests are made.
 
 Completed runs are stored locally in `check_history.json` beside the application. The History page can remove all stored runs with its purge action.
+
+## macOS Build
+
+The repository includes a GitHub Actions workflow that builds both Windows and macOS artifacts. Push a version tag such as `v1.2.0`, or run the workflow manually from the Actions tab. The macOS artifact is a zipped `.app` bundle.
+
+When running on macOS, settings, history, and the copied default URL list are stored in `~/Library/Application Support/URL Monitor` so the app does not need write access inside its `.app` bundle.

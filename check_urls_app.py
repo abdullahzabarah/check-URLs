@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import sys
 import requests
 import time
@@ -12,22 +13,36 @@ import webbrowser
 # === SLACK WEBHOOK ===
 SLACK_WEBHOOK_URL = "SLACK_WEBHOOK_URL"
 
-# ✅ Handle EXE vs script path
+# Handle source and packaged resource paths separately so macOS app bundles
+# can keep writable settings outside the read-only .app directory.
 if getattr(sys, 'frozen', False):
-    base_path = os.path.dirname(sys.executable)
+    resource_path = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    executable_path = os.path.dirname(sys.executable)
 else:
-    base_path = os.path.dirname(__file__)
+    resource_path = os.path.dirname(__file__)
+    executable_path = resource_path
 
-# ✅ Default file
+if sys.platform == "darwin":
+    base_path = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "URL Monitor")
+    os.makedirs(base_path, exist_ok=True)
+else:
+    base_path = executable_path
+
 DEFAULT_FILE = os.path.join(base_path, "urls.txt")
+bundled_default_file = os.path.join(resource_path, "urls.txt")
+if not os.path.exists(DEFAULT_FILE) and os.path.exists(bundled_default_file):
+    try:
+        shutil.copyfile(bundled_default_file, DEFAULT_FILE)
+    except OSError:
+        pass
 
 current_file = DEFAULT_FILE
 APP_VERSION = "1.2"
 APP_YEAR = time.strftime('%Y')
 CONFIG_FILE = os.path.join(base_path, "monitor_urls_config.json")
 HISTORY_FILE = os.path.join(base_path, "check_history.json")
-ICON_FILE = os.path.join(base_path, "url_monitor.ico")
-LOGO_FILE = os.path.join(base_path, "url_monitor_logo.svg")
+ICON_FILE = os.path.join(resource_path, "url_monitor.ico")
+LOGO_FILE = os.path.join(resource_path, "url_monitor_logo.svg")
 
 # Slack enabled flag (persisted)
 SLACK_ENABLED = True

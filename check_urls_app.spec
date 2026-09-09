@@ -1,11 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+
+icon_path = 'url_monitor.icns' if sys.platform == 'darwin' else 'url_monitor.ico'
+use_upx = sys.platform == 'win32'
 
 a = Analysis(
     ['check_urls_app.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('urls.txt', '.'), ('url_monitor_logo.svg', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -23,11 +27,11 @@ exe = EXE(
     a.datas,
     [],
     name='check_urls_app',
-    icon='url_monitor.ico',
+    icon=icon_path,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=use_upx,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,

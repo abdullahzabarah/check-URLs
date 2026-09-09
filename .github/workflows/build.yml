@@ -1,0 +1,65 @@
+name: Build URL Monitor
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build dependencies
+        run: python -m pip install requests pyinstaller
+      - name: Build Windows executable
+        run: python -m PyInstaller check_urls_app.spec --noconfirm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: url-monitor-windows
+          path: dist/check_urls_app.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build dependencies
+        run: python -m pip install requests pyinstaller pillow
+      - name: Create macOS icon
+        shell: bash
+        run: |
+          mkdir -p url_monitor.iconset
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+
+          source = Image.new("RGBA", (1024, 1024), "#12343b")
+          draw = ImageDraw.Draw(source)
+          draw.rounded_rectangle((0, 0, 1023, 1023), radius=190, fill="#12343b")
+          draw.ellipse((170, 170, 854, 854), fill="#176b87", outline="#f4f7f9", width=40)
+          draw.arc((300, 300, 724, 724), 200, 340, fill="#f4f7f9", width=52)
+          draw.ellipse((488, 488, 536, 536), fill="#f4f7f9")
+
+          sizes = {"16x16": 16, "32x32": 32, "128x128": 128, "256x256": 256, "512x512": 512}
+          for label, size in sizes.items():
+              image = source.resize((size, size), Image.Resampling.LANCZOS)
+              image.save(Path("url_monitor.iconset") / f"icon_{label}.png")
+              retina = source.resize((size * 2, size * 2), Image.Resampling.LANCZOS)
+              retina.save(Path("url_monitor.iconset") / f"icon_{label}@2x.png")
+          PY
+          iconutil -c icns url_monitor.iconset -o url_monitor.icns
+      - name: Build macOS application
+        run: python -m PyInstaller check_urls_app.spec --noconfirm
+      - name: Create macOS archive
+        run: ditto -c -k --sequesterRsrc --keepParent dist/check_urls_app.app dist/check_urls_app-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: url-monitor-macos
+          path: dist/check_urls_app-macos.zip

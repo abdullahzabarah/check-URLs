@@ -22,7 +22,7 @@ else:
 DEFAULT_FILE = os.path.join(base_path, "urls.txt")
 
 current_file = DEFAULT_FILE
-APP_VERSION = "1.0"
+APP_VERSION = "1.1"
 APP_YEAR = time.strftime('%Y')
 CONFIG_FILE = os.path.join(base_path, "monitor_urls_config.json")
 
@@ -34,6 +34,7 @@ progress_var = None
 progress_label = None
 stop_button = None
 stop_requested = False
+last_run_summary = "No checks run yet"
 
 
 def save_config():
@@ -64,6 +65,34 @@ def resolve_file_path(path):
     if os.path.isabs(path):
         return path
     return os.path.normpath(os.path.join(base_path, path))
+
+
+def read_url_file(path):
+    """Read a URL list and return usable URLs plus file-quality metrics."""
+    with open(path, "r", encoding="utf-8", errors="replace") as file_handle:
+        raw_lines = [line.strip() for line in file_handle if line.strip()]
+
+    unique_urls = []
+    seen = set()
+    duplicate_count = 0
+    invalid_count = 0
+    for value in raw_lines:
+        if not is_valid_url(value):
+            invalid_count += 1
+            continue
+        normalized = value if value.startswith(("http://", "https://")) else f"https://{value}"
+        if normalized in seen:
+            duplicate_count += 1
+            continue
+        seen.add(normalized)
+        unique_urls.append(normalized)
+
+    return unique_urls, {
+        "lines": len(raw_lines),
+        "valid": len(unique_urls),
+        "invalid": invalid_count,
+        "duplicates": duplicate_count,
+    }
 
 
 def load_config():
@@ -135,6 +164,8 @@ def reset_dashboard():
         progress_var.set(0)
     if progress_label is not None:
         progress_label.config(text="Progress: 0 / 0")
+    if health_rate_label is not None:
+        health_rate_label.config(text="Health rate: -")
 
 
 def update_dashboard(total, healthy, warning, error, elapsed=None, last_checked=None):
@@ -147,6 +178,9 @@ def update_dashboard(total, healthy, warning, error, elapsed=None, last_checked=
         elapsed_label.config(text=f"Elapsed: {elapsed}s")
     if last_checked is not None:
         last_checked_label.config(text=f"Last checked: {last_checked}")
+    if health_rate_label is not None:
+        rate = round((healthy / total) * 100) if total else 0
+        health_rate_label.config(text=f"Health rate: {rate}%")
     root.update()
 
 
@@ -230,15 +264,26 @@ def get_urls_to_check(use_file=True):
     specific_url = specific_url_var.get().strip()
     if not use_file:
         if specific_url and is_valid_url(specific_url):
-            return [specific_url]
+            return [specific_url if specific_url.startswith(("http://", "https://")) else f"https://{specific_url}"]
         log("⚠️ Enter a valid URL or IP address to check.", "warning")
         return []
 
     try:
-        with open(current_file, "r") as f:
-            return [line.strip() for line in f if line.strip()]
+        urls, metrics = read_url_file(current_file)
+        update_file_insights(metrics)
+        if metrics["invalid"] or metrics["duplicates"]:
+            log(
+                f"ℹ️ File scan: {metrics['valid']} valid, "
+                f"{metrics['invalid']} invalid, {metrics['duplicates']} duplicates skipped.",
+                "info"
+            )
+        return urls
     except FileNotFoundError:
         log(f"❌ File not found:\n{current_file}", "error")
+        update_file_insights({"lines": 0, "valid": 0, "invalid": 0, "duplicates": 0})
+        return []
+    except OSError as error:
+        log(f"❌ Could not read URL file: {error}", "error")
         return []
 
 
@@ -251,6 +296,7 @@ def browse_file():
     if file_path:
         current_file = file_path
         file_label.config(text=f"Using file: {current_file}")
+        update_file_insights()
 
 
 # =====================
@@ -259,6 +305,9 @@ def browse_file():
 def send_slack_alert(message):
     if not SLACK_ENABLED:
         log("ℹ️ Slack alerts disabled; skipping Slack notification.", "info")
+        return
+    if not SLACK_WEBHOOK_URL or SLACK_WEBHOOK_URL == "SLACK_WEBHOOK_URL":
+        log("ℹ️ Slack webhook is not configured; skipping notification.", "info")
         return
 
     try:
@@ -338,6 +387,7 @@ def check_urls(urls):
 
     stop_requested = False
     show_stop_button()
+    run_status_label.config(text=f"Checking {len(urls)} targets...", fg="#176b87")
 
     start_time = time.strftime('%Y-%m-%d %H:%M:%S')
     log(f"🔍 Checking URLs...\nStart: {start_time}\n", "info")
@@ -407,8 +457,12 @@ def check_urls(urls):
             send_slack_alert(f"💚 OK | All URLs healthy at *{end_time}*")
 
         log("✓ Done.", "success")
+        run_status_label.config(text="Check complete", fg="#087f5b")
     else:
         log("✓ Stopped.", "warning")
+        run_status_label.config(text="Check stopped", fg="#b54708")
+
+    last_run_label.config(text=f"Last run: {end_time}")
 
     hide_stop_button()
 
@@ -430,10 +484,51 @@ def clear_specific_url():
 def clear_results():
     output_box.delete(1.0, tk.END)
     reset_dashboard()
+    run_status_label.config(text="Ready for a new check", fg="#52606d")
+    last_run_label.config(text="Last run: -")
     try:
         clear_results_btn.config(state=tk.DISABLED)
     except Exception:
         pass
+
+
+def update_file_insights(metrics=None):
+    if metrics is None:
+        try:
+            _, metrics = read_url_file(current_file)
+        except (FileNotFoundError, OSError):
+            metrics = {"lines": 0, "valid": 0, "invalid": 0, "duplicates": 0}
+
+    file_stats_label.config(
+        text=(
+            f"{metrics['valid']} ready  |  {metrics['invalid']} invalid  |  "
+            f"{metrics['duplicates']} duplicates"
+        )
+    )
+    source_count_label.config(text=f"{metrics['valid']} targets")
+
+
+def export_results():
+    content = output_box.get(1.0, tk.END).strip()
+    if not content:
+        messagebox.showinfo("Export report", "Run a check before exporting a report.")
+        return
+
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    path = filedialog.asksaveasfilename(
+        title="Export URL report",
+        defaultextension=".txt",
+        initialfile=f"url_report_{timestamp}.txt",
+        filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")],
+    )
+    if not path:
+        return
+    try:
+        with open(path, "w", encoding="utf-8") as file_handle:
+            file_handle.write(content + "\n")
+        run_status_label.config(text=f"Report exported: {os.path.basename(path)}", fg="#176b87")
+    except OSError as error:
+        messagebox.showerror("Export failed", f"Could not save report:\n{error}")
 
 def configure_slack():
     global SLACK_WEBHOOK_URL
@@ -449,6 +544,7 @@ def configure_default_file():
     if file_path:
         current_file = file_path
         file_label.config(text=f"Using file: {current_file}")
+        update_file_insights()
         save_config()
 
 def show_about():
@@ -497,7 +593,8 @@ def show_instructions():
         "6. Settings: Open Settings from the Settings menu to configure the default file and Slack webhook, and enable/disable Slack alerts.\n\n"
         "7. Slack: When enabled, Slack notifications will be sent to the configured webhook whenever issues are detected.\n\n"
         "8. File viewer: Click the 'Using file:' label to open and view the current URL file contents.\n\n"
-        "9. About & Repo: Use Help → About to see author and repo information.\n\n"
+        "9. Export: Use 'Export Report' above the results to save a timestamped text report.\n\n"
+        "10. About & Repo: Use Help → About to see author and repo information.\n\n"
         "Tips:\n- Use fully-qualified URLs (https://...) for reliable checks.\n- Timeout is 5 seconds per request; adjust the code if you need a different timeout.\n"
     )
 
@@ -528,16 +625,22 @@ def show_version():
 load_config()
 root = tk.Tk()
 root.title("URL Monitor")
-root.geometry("820x620")
+root.geometry("1040x760")
+root.minsize(900, 650)
+root.configure(bg="#f4f7f9")
 
 
 
 specific_url_var = tk.StringVar()
 progress_var = tk.DoubleVar(value=0.0)
 
-# Use native theme for a normal OS look
+# Use a restrained native theme with a stronger information hierarchy.
 style = ttk.Style(root)
-# do not force a theme so the OS/native theme is used
+try:
+    style.theme_use("clam")
+except tk.TclError:
+    pass
+style.configure("Monitor.Horizontal.TProgressbar", troughcolor="#dfe8ed", background="#176b87", lightcolor="#176b87", darkcolor="#176b87", borderwidth=0)
 
 button_font = ("Segoe UI", 10)
 label_font = ("Segoe UI", 10, "bold")
@@ -615,14 +718,22 @@ help_menu.add_command(label="About", command=show_about)
 help_menu.add_command(label="Version", command=show_version)
 menu_bar.add_cascade(label="Help", menu=help_menu)
 root.config(menu=menu_bar)
-root_frame = tk.Frame(root)
-root_frame.pack(fill=tk.X, padx=10)
+root_frame = tk.Frame(root, bg="#f4f7f9")
+root_frame.pack(fill=tk.X, padx=18, pady=(14, 0))
+
+title_frame = tk.Frame(root_frame, bg="#f4f7f9")
+title_frame.pack(fill=tk.X)
+tk.Label(title_frame, text="URL Monitor", font=("Segoe UI", 22, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
+tk.Label(title_frame, text="Visibility for every endpoint", font=("Segoe UI", 10), fg="#52606d", bg="#f4f7f9").pack(side=tk.LEFT, padx=(12, 0), pady=(9, 0))
+
+run_status_label = tk.Label(title_frame, text="Ready for a new check", font=("Segoe UI", 10, "bold"), fg="#52606d", bg="#f4f7f9")
+run_status_label.pack(side=tk.RIGHT, pady=(8, 0))
 
 # Left: file info + file actions
-left_frame = tk.Frame(root_frame)
+left_frame = tk.Frame(root_frame, bg="#f4f7f9")
 left_frame.pack(side=tk.LEFT, anchor="w")
 
-file_label = tk.Label(left_frame, text=f"Using file: {current_file}", font=("Segoe UI", 12, "bold"))
+file_label = tk.Label(left_frame, text=f"Using file: {current_file}", font=("Segoe UI", 12, "bold"), fg="#12343b", bg="#f4f7f9")
 file_label.grid(row=0, column=0, sticky="w", pady=(12, 4))
 file_font = tkfont.Font(family="Segoe UI", size=12, weight="bold")
 file_font_underline = tkfont.Font(family="Segoe UI", size=12, weight="bold", underline=1)
@@ -638,8 +749,14 @@ file_label.bind("<Button-1>", lambda e: open_file_viewer())
 file_label.bind("<Enter>", _on_file_enter)
 file_label.bind("<Leave>", _on_file_leave)
 
-file_actions = tk.Frame(left_frame)
-file_actions.grid(row=1, column=0, sticky="w", pady=(2, 8))
+source_count_label = tk.Label(left_frame, text="0 targets", font=("Segoe UI", 9, "bold"), fg="#176b87", bg="#f4f7f9")
+source_count_label.grid(row=0, column=1, sticky="w", padx=(10, 0), pady=(12, 4))
+
+file_stats_label = tk.Label(left_frame, text="0 ready  |  0 invalid  |  0 duplicates", font=("Segoe UI", 9), fg="#52606d", bg="#f4f7f9")
+file_stats_label.grid(row=1, column=0, columnspan=2, sticky="w")
+
+file_actions = tk.Frame(left_frame, bg="#f4f7f9")
+file_actions.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 8))
 
 choose_file_btn = tk.Button(file_actions, text="📁 Choose File...", command=browse_file, font=button_font)
 choose_file_btn.pack(side=tk.LEFT, padx=4)
@@ -658,7 +775,7 @@ ToolTip(stop_button, "Stop the running URL check")
 
 # Specific URL field: move under file actions (new row)
 url_frame = tk.Frame(left_frame)
-url_frame.grid(row=2, column=0, sticky="w", pady=(6,8))
+url_frame.grid(row=3, column=0, columnspan=2, sticky="w", pady=(6,8))
 
 tk.Label(url_frame, text="Specific URL to check:", font=label_font).pack(side=tk.LEFT)
 url_entry = tk.Entry(url_frame, textvariable=specific_url_var, width=58, font=text_font, bd=1, relief=tk.FLAT)
@@ -674,40 +791,52 @@ specific_url_var.trace_add('write', lambda *args: validate_specific_url())
 validate_specific_url()
 
 # Progress bar row
-progress_frame = tk.Frame(root)
-progress_frame.pack(pady=4, fill=tk.X, padx=10)
+progress_frame = tk.Frame(root, bg="#f4f7f9")
+progress_frame.pack(pady=(2, 6), fill=tk.X, padx=18)
 
-progress_bar = ttk.Progressbar(progress_frame, variable=progress_var, maximum=100, length=560)
-progress_bar.pack(side=tk.LEFT, padx=6, pady=2)
-progress_label = tk.Label(progress_frame, text="Progress: 0 / 0", font=button_font)
+progress_bar = ttk.Progressbar(progress_frame, variable=progress_var, maximum=100, style="Monitor.Horizontal.TProgressbar")
+progress_bar.pack(side=tk.LEFT, padx=6, pady=2, fill=tk.X, expand=True)
+progress_label = tk.Label(progress_frame, text="Progress: 0 / 0", font=button_font, bg="#f4f7f9", fg="#52606d")
 progress_label.pack(side=tk.LEFT, padx=10)
 
 # Slack controls moved to Settings dialog
 
 # Dashboard frame
 
-dashboard_frame = tk.Frame(root, bd=0, padx=14, pady=12)
-dashboard_frame.pack(padx=10, pady=6, fill=tk.X)
+dashboard_frame = tk.Frame(root, bg="#f4f7f9", padx=12, pady=6)
+dashboard_frame.pack(padx=18, pady=(2, 4), fill=tk.X)
+for column in range(4):
+    dashboard_frame.columnconfigure(column, weight=1)
 
-total_label = tk.Label(dashboard_frame, text="Total checked: 0", anchor="w", font=("Segoe UI", 11, "bold"))
-healthy_label = tk.Label(dashboard_frame, text="Healthy: 0", fg="#008000", anchor="w", font=("Segoe UI", 11, "bold"))
-warning_label = tk.Label(dashboard_frame, text="Warnings: 0", fg="#d2691e", anchor="w", font=("Segoe UI", 11, "bold"))
-error_label = tk.Label(dashboard_frame, text="Errors: 0", fg="#ff0000", anchor="w", font=("Segoe UI", 11, "bold"))
-elapsed_label = tk.Label(dashboard_frame, text="Elapsed: 0.0s", anchor="w", font=("Segoe UI", 10))
-last_checked_label = tk.Label(dashboard_frame, text="Last checked: -", anchor="w", font=("Segoe UI", 10))
-clock_label = tk.Label(dashboard_frame, text="Current time: -", anchor="e", font=("Segoe UI", 10, "italic"))
+total_label = tk.Label(dashboard_frame, text="Total checked: 0", anchor="w", font=("Segoe UI", 11, "bold"), bg="#e7eef2", fg="#12343b", padx=10, pady=10)
+healthy_label = tk.Label(dashboard_frame, text="Healthy: 0", fg="#087f5b", anchor="w", font=("Segoe UI", 11, "bold"), bg="#e3f4ed", padx=10, pady=10)
+warning_label = tk.Label(dashboard_frame, text="Warnings: 0", fg="#b54708", anchor="w", font=("Segoe UI", 11, "bold"), bg="#fff0d9", padx=10, pady=10)
+error_label = tk.Label(dashboard_frame, text="Errors: 0", fg="#c92a2a", anchor="w", font=("Segoe UI", 11, "bold"), bg="#fde8e7", padx=10, pady=10)
+elapsed_label = tk.Label(dashboard_frame, text="Elapsed: 0.0s", anchor="w", font=("Segoe UI", 10), bg="#f4f7f9", fg="#52606d")
+last_checked_label = tk.Label(dashboard_frame, text="Last checked: -", anchor="w", font=("Segoe UI", 10), bg="#f4f7f9", fg="#52606d")
+health_rate_label = tk.Label(dashboard_frame, text="Health rate: -", anchor="w", font=("Segoe UI", 10, "bold"), bg="#f4f7f9", fg="#176b87")
+last_run_label = tk.Label(dashboard_frame, text="Last run: -", anchor="e", font=("Segoe UI", 10), bg="#f4f7f9", fg="#52606d")
+clock_label = tk.Label(dashboard_frame, text="Current time: -", anchor="e", font=("Segoe UI", 10, "italic"), bg="#f4f7f9", fg="#52606d")
 
 total_label.grid(row=0, column=0, sticky="w", padx=6, pady=3)
 healthy_label.grid(row=0, column=1, sticky="w", padx=6, pady=3)
 warning_label.grid(row=0, column=2, sticky="w", padx=6, pady=3)
 error_label.grid(row=0, column=3, sticky="w", padx=6, pady=3)
-elapsed_label.grid(row=1, column=0, sticky="w", padx=6, pady=3)
-last_checked_label.grid(row=1, column=1, sticky="w", padx=6, pady=3)
-clock_label.grid(row=1, column=2, columnspan=2, sticky="e", padx=6, pady=3)
+elapsed_label.grid(row=1, column=0, sticky="w", padx=6, pady=(8, 3))
+last_checked_label.grid(row=1, column=1, sticky="w", padx=6, pady=(8, 3))
+health_rate_label.grid(row=1, column=2, sticky="w", padx=6, pady=(8, 3))
+last_run_label.grid(row=1, column=3, sticky="e", padx=6, pady=(8, 3))
+clock_label.grid(row=2, column=0, columnspan=4, sticky="e", padx=6, pady=(0, 2))
 
 # Output box
-output_box = scrolledtext.ScrolledText(root, width=104, height=20, bd=1, relief=tk.SUNKEN, font=("Consolas", 10))
-output_box.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+results_header = tk.Frame(root, bg="#f4f7f9")
+results_header.pack(padx=18, pady=(8, 0), fill=tk.X)
+tk.Label(results_header, text="Check results", font=("Segoe UI", 12, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
+export_button = tk.Button(results_header, text="Export Report", command=export_results, font=button_font, fg="#176b87")
+export_button.pack(side=tk.RIGHT, padx=(6, 0))
+
+output_box = scrolledtext.ScrolledText(root, width=104, height=20, bd=1, relief=tk.SUNKEN, font=("Consolas", 10), bg="#fbfcfd", fg="#172b4d", padx=8, pady=6)
+output_box.pack(padx=18, pady=(6, 14), fill=tk.BOTH, expand=True)
 output_box.tag_config("success", foreground="#008000")
 output_box.tag_config("warning", foreground="#d2691e")
 output_box.tag_config("error", foreground="#ff0000")
@@ -743,6 +872,7 @@ output_box.bind('<<Modified>>', _on_output_modified)
 
 # Initialize clear results button state based on existing content
 update_clear_results_state()
+update_file_insights()
 
 
 def open_file_viewer():

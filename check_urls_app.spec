@@ -23,6 +23,7 @@ exe = EXE(
     a.datas,
     [],
     name='check_urls_app',
+    icon='url_monitor.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

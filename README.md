@@ -10,6 +10,8 @@ A small desktop URL monitoring tool built with Tkinter. It checks a URL list or 
 - Clickable result URLs that copy into the single-check field
 - Stop a running check without closing the app
 - Export the current result log as a timestamped text report
+- Animated branded dashboard header with a custom application icon
+- Separate check history page with health summaries and purge controls
 - Optional Slack alerts configured from Settings
 
 ## Run
@@ -19,3 +21,5 @@ python check_urls_app.py
 ```
 
 Put one URL per line in `urls.txt`. Lines that are invalid or duplicated are reported and skipped before network requests are made.
+
+Completed runs are stored locally in `check_history.json` beside the application. The History page can remove all stored runs with its purge action.

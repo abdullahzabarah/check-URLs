@@ -22,9 +22,12 @@ else:
 DEFAULT_FILE = os.path.join(base_path, "urls.txt")
 
 current_file = DEFAULT_FILE
-APP_VERSION = "1.1"
+APP_VERSION = "1.2"
 APP_YEAR = time.strftime('%Y')
 CONFIG_FILE = os.path.join(base_path, "monitor_urls_config.json")
+HISTORY_FILE = os.path.join(base_path, "check_history.json")
+ICON_FILE = os.path.join(base_path, "url_monitor.ico")
+LOGO_FILE = os.path.join(base_path, "url_monitor_logo.svg")
 
 # Slack enabled flag (persisted)
 SLACK_ENABLED = True
@@ -35,6 +38,7 @@ progress_label = None
 stop_button = None
 stop_requested = False
 last_run_summary = "No checks run yet"
+history_records = []
 
 
 def save_config():
@@ -111,6 +115,42 @@ def load_config():
         save_config()
 
 
+def load_history():
+    global history_records
+    if not os.path.exists(HISTORY_FILE):
+        history_records = []
+        return
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as file_handle:
+            records = json.load(file_handle)
+        history_records = records if isinstance(records, list) else []
+    except (OSError, json.JSONDecodeError):
+        history_records = []
+
+
+def save_history():
+    try:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as file_handle:
+            json.dump(history_records[-100:], file_handle, indent=2)
+    except OSError:
+        log("⚠️ Could not save check history.", "warning")
+
+
+def record_history(source, total, healthy, warning, error, elapsed, checked_at, stopped=False):
+    history_records.append({
+        "checked_at": checked_at,
+        "source": source,
+        "total": total,
+        "healthy": healthy,
+        "warning": warning,
+        "error": error,
+        "elapsed": elapsed,
+        "stopped": stopped,
+    })
+    del history_records[:-100]
+    save_history()
+
+
 # =====================
 # LOG FUNCTION WITH COLORS
 # =====================
@@ -151,6 +191,69 @@ class ToolTip:
         if self.tipwindow:
             self.tipwindow.destroy()
             self.tipwindow = None
+
+
+BUTTON_THEMES = {
+    "primary": {
+        "bg": "#176b87", "hover": "#2b8aa3", "pressed": "#0f5268",
+        "fg": "#ffffff", "active_fg": "#ffffff",
+    },
+    "neutral": {
+        "bg": "#e7eef2", "hover": "#d4e3e8", "pressed": "#bed2d9",
+        "fg": "#12343b", "active_fg": "#12343b",
+    },
+    "warning": {
+        "bg": "#fff0d9", "hover": "#ffe2b3", "pressed": "#f4c982",
+        "fg": "#8a4300", "active_fg": "#6d3300",
+    },
+    "danger": {
+        "bg": "#fde8e7", "hover": "#f9cfcd", "pressed": "#efa9a6",
+        "fg": "#a61e1e", "active_fg": "#861818",
+    },
+}
+
+
+def style_action_button(button, tone="neutral"):
+    theme = BUTTON_THEMES[tone]
+    button.configure(
+        bg=theme["bg"],
+        fg=theme["fg"],
+        activebackground=theme["hover"],
+        activeforeground=theme["active_fg"],
+        disabledforeground="#9aa8ad",
+        relief=tk.FLAT,
+        overrelief=tk.RAISED,
+        bd=0,
+        highlightthickness=2,
+        highlightbackground="#d7e2e6",
+        highlightcolor="#2b8aa3",
+        padx=11,
+        pady=6,
+        cursor="hand2",
+    )
+
+    def on_enter(event):
+        if button["state"] != tk.DISABLED:
+            button.configure(bg=theme["hover"])
+
+    def on_leave(event):
+        if button["state"] != tk.DISABLED:
+            button.configure(bg=theme["bg"], relief=tk.FLAT)
+
+    def on_press(event):
+        if button["state"] != tk.DISABLED:
+            button.configure(bg=theme["pressed"], relief=tk.SUNKEN)
+
+    def on_release(event):
+        if button["state"] != tk.DISABLED:
+            button.configure(bg=theme["hover"], relief=tk.FLAT)
+            button.after(110, lambda: button.configure(bg=theme["bg"]) if button.winfo_exists() else None)
+
+    button.bind("<Enter>", on_enter, add="+")
+    button.bind("<Leave>", on_leave, add="+")
+    button.bind("<ButtonPress-1>", on_press, add="+")
+    button.bind("<ButtonRelease-1>", on_release, add="+")
+    return button
 
 
 def reset_dashboard():
@@ -377,7 +480,7 @@ def hide_stop_button():
     clear_results_btn.config(state=tk.NORMAL if output_box.get(1.0, tk.END).strip() else tk.DISABLED)
 
 
-def check_urls(urls):
+def check_urls(urls, source="URL list"):
     global stop_requested
     output_box.delete(1.0, tk.END)
     reset_dashboard()
@@ -438,9 +541,10 @@ def check_urls(urls):
     end_time = time.strftime('%Y-%m-%d %H:%M:%S')
     total = round(time.time() - begin, 2)
     log(f"Elapsed: {total}s\n", "info")
+    checked_count = healthy + warning + error
 
     update_dashboard(
-        total=len(urls),
+        total=checked_count,
         healthy=healthy,
         warning=warning,
         error=error,
@@ -463,18 +567,28 @@ def check_urls(urls):
         run_status_label.config(text="Check stopped", fg="#b54708")
 
     last_run_label.config(text=f"Last run: {end_time}")
+    record_history(
+        source=source,
+        total=checked_count,
+        healthy=healthy,
+        warning=warning,
+        error=error,
+        elapsed=total,
+        checked_at=end_time,
+        stopped=stop_requested,
+    )
 
     hide_stop_button()
 
 
 def check_file_urls():
     urls = get_urls_to_check(use_file=True)
-    check_urls(urls)
+    check_urls(urls, source=os.path.basename(current_file))
 
 
 def check_specific_url():
     urls = get_urls_to_check(use_file=False)
-    check_urls(urls)
+    check_urls(urls, source="Specific URL")
 
 
 def clear_specific_url():
@@ -530,6 +644,80 @@ def export_results():
     except OSError as error:
         messagebox.showerror("Export failed", f"Could not save report:\n{error}")
 
+
+def show_history():
+    history_win = tk.Toplevel(root)
+    history_win.title("Check History")
+    history_win.geometry("900x500")
+    history_win.minsize(720, 380)
+    history_win.transient(root)
+    history_win.configure(bg="#f4f7f9")
+    history_win.columnconfigure(0, weight=1)
+    history_win.rowconfigure(1, weight=1)
+
+    header = tk.Frame(history_win, bg="#f4f7f9")
+    header.grid(row=0, column=0, sticky="ew", padx=18, pady=(16, 8))
+    tk.Label(header, text="Check History", font=("Segoe UI", 18, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
+    tk.Label(header, text="Your last 100 monitoring runs", font=("Segoe UI", 10), fg="#52606d", bg="#f4f7f9").pack(side=tk.LEFT, padx=(12, 0), pady=(6, 0))
+
+    table_frame = tk.Frame(history_win, bg="#f4f7f9")
+    table_frame.grid(row=1, column=0, sticky="nsew", padx=18, pady=4)
+    table_frame.columnconfigure(0, weight=1)
+    table_frame.rowconfigure(0, weight=1)
+    columns = ("checked_at", "source", "total", "healthy", "warning", "error", "health", "elapsed", "state")
+    tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=16)
+    headings = {
+        "checked_at": "Checked at", "source": "Source", "total": "Total",
+        "healthy": "Healthy", "warning": "Warnings", "error": "Errors",
+        "health": "Health", "elapsed": "Time", "state": "State",
+    }
+    widths = {"checked_at": 150, "source": 150, "total": 60, "healthy": 70, "warning": 75, "error": 60, "health": 70, "elapsed": 65, "state": 90}
+    for column in columns:
+        tree.heading(column, text=headings[column])
+        tree.column(column, width=widths[column], anchor="center")
+    tree.grid(row=0, column=0, sticky="nsew")
+    scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=tree.yview)
+    scrollbar.grid(row=0, column=1, sticky="ns")
+    tree.configure(yscrollcommand=scrollbar.set)
+
+    def refresh_rows():
+        for item in tree.get_children():
+            tree.delete(item)
+        for record in reversed(history_records):
+            total = record.get("total", 0)
+            healthy = record.get("healthy", 0)
+            rate = f"{round((healthy / total) * 100)}%" if total else "-"
+            state = "Stopped" if record.get("stopped") else "Complete"
+            tree.insert("", tk.END, values=(
+                record.get("checked_at", "-"), record.get("source", "-"), total,
+                healthy, record.get("warning", 0), record.get("error", 0), rate,
+                f"{record.get('elapsed', 0)}s", state,
+            ))
+        count_label.config(text=f"{len(history_records)} saved runs")
+
+    footer = tk.Frame(history_win, bg="#f4f7f9")
+    footer.grid(row=2, column=0, sticky="ew", padx=18, pady=(8, 16))
+    count_label = tk.Label(footer, text="0 saved runs", font=("Segoe UI", 9), fg="#52606d", bg="#f4f7f9")
+    count_label.pack(side=tk.LEFT)
+
+    def purge_history():
+        if not history_records:
+            messagebox.showinfo("Purge history", "There is no saved history to purge.", parent=history_win)
+            return
+        if not messagebox.askyesno("Purge history", "Delete all saved check history? This cannot be undone.", parent=history_win):
+            return
+        history_records.clear()
+        save_history()
+        refresh_rows()
+
+    purge_button = tk.Button(footer, text="Purge History", command=purge_history, font=button_font)
+    purge_button.pack(side=tk.RIGHT, padx=(8, 0))
+    style_action_button(purge_button, "danger")
+    close_button = tk.Button(footer, text="Close", command=history_win.destroy, font=button_font)
+    close_button.pack(side=tk.RIGHT)
+    style_action_button(close_button)
+    refresh_rows()
+
 def configure_slack():
     global SLACK_WEBHOOK_URL
     url = simpledialog.askstring("Slack Webhook", "Enter Slack webhook URL:", initialvalue=SLACK_WEBHOOK_URL)
@@ -579,7 +767,9 @@ def show_about():
     repo_lbl.bind("<Enter>", lambda e: repo_lbl.config(fg="#551A8B"))
     repo_lbl.bind("<Leave>", lambda e: repo_lbl.config(fg="#0000ee"))
 
-    tk.Button(about_win, text="Close", command=about_win.destroy, width=10).pack(pady=(8, 12))
+    about_close_button = tk.Button(about_win, text="Close", command=about_win.destroy, width=10)
+    about_close_button.pack(pady=(8, 12))
+    style_action_button(about_close_button)
 
 
 def show_instructions():
@@ -594,7 +784,8 @@ def show_instructions():
         "7. Slack: When enabled, Slack notifications will be sent to the configured webhook whenever issues are detected.\n\n"
         "8. File viewer: Click the 'Using file:' label to open and view the current URL file contents.\n\n"
         "9. Export: Use 'Export Report' above the results to save a timestamped text report.\n\n"
-        "10. About & Repo: Use Help → About to see author and repo information.\n\n"
+        "10. History: Open View → Check History or click History in the header to review previous runs. Use Purge History to remove all saved runs.\n\n"
+        "11. About & Repo: Use Help → About to see author and repo information.\n\n"
         "Tips:\n- Use fully-qualified URLs (https://...) for reliable checks.\n- Timeout is 5 seconds per request; adjust the code if you need a different timeout.\n"
     )
 
@@ -614,6 +805,7 @@ def show_instructions():
 
     btn = tk.Button(win, text="Close", command=win.destroy, width=10)
     btn.grid(row=1, column=0, sticky="e", padx=8, pady=(0,8))
+    style_action_button(btn)
 
 def show_version():
     messagebox.showinfo("Version", f"URL Monitor Version: {APP_VERSION}")
@@ -623,11 +815,17 @@ def show_version():
 # GUI
 # =====================
 load_config()
+load_history()
 root = tk.Tk()
 root.title("URL Monitor")
 root.geometry("1040x760")
 root.minsize(900, 650)
 root.configure(bg="#f4f7f9")
+try:
+    if os.path.exists(ICON_FILE):
+        root.iconbitmap(ICON_FILE)
+except tk.TclError:
+    pass
 
 
 
@@ -696,7 +894,9 @@ def open_settings():
 
     tk.Label(settings_win, text="Default URL file:", font=label_font).grid(row=0, column=0, sticky="w", padx=10, pady=8)
     tk.Entry(settings_win, textvariable=default_file_var, font=text_font).grid(row=0, column=1, padx=6, pady=8, sticky="ew")
-    tk.Button(settings_win, text="Browse...", command=browse_for_file).grid(row=0, column=2, padx=6, pady=8)
+    browse_button = tk.Button(settings_win, text="Browse...", command=browse_for_file)
+    browse_button.grid(row=0, column=2, padx=6, pady=8)
+    style_action_button(browse_button)
 
     tk.Label(settings_win, text="Slack Webhook URL:", font=label_font).grid(row=1, column=0, sticky="w", padx=10, pady=8)
     tk.Entry(settings_win, textvariable=slack_var, font=text_font).grid(row=1, column=1, columnspan=2, padx=6, pady=8, sticky="ew")
@@ -705,12 +905,20 @@ def open_settings():
 
     btn_frame = tk.Frame(settings_win)
     btn_frame.grid(row=3, column=0, columnspan=3, sticky="e", padx=6, pady=12)
-    tk.Button(btn_frame, text="Save", command=save_and_close, width=12).pack(side=tk.RIGHT, padx=(6,0))
-    tk.Button(btn_frame, text="Cancel", command=settings_win.destroy, width=12).pack(side=tk.RIGHT, padx=(6,0))
+    save_button = tk.Button(btn_frame, text="Save", command=save_and_close, width=12)
+    save_button.pack(side=tk.RIGHT, padx=(6,0))
+    style_action_button(save_button, "primary")
+    cancel_button = tk.Button(btn_frame, text="Cancel", command=settings_win.destroy, width=12)
+    cancel_button.pack(side=tk.RIGHT, padx=(6,0))
+    style_action_button(cancel_button)
 
 settings_menu = tk.Menu(menu_bar, tearoff=0)
 settings_menu.add_command(label="Settings...", command=open_settings)
 menu_bar.add_cascade(label="Settings", menu=settings_menu)
+
+view_menu = tk.Menu(menu_bar, tearoff=0)
+view_menu.add_command(label="Check History...", command=show_history)
+menu_bar.add_cascade(label="View", menu=view_menu)
 
 help_menu = tk.Menu(menu_bar, tearoff=0)
 help_menu.add_command(label="Instructions...", command=show_instructions)
@@ -723,11 +931,30 @@ root_frame.pack(fill=tk.X, padx=18, pady=(14, 0))
 
 title_frame = tk.Frame(root_frame, bg="#f4f7f9")
 title_frame.pack(fill=tk.X)
+logo_canvas = tk.Canvas(title_frame, width=54, height=54, highlightthickness=0, bg="#f4f7f9")
+logo_canvas.pack(side=tk.LEFT, padx=(0, 10))
+logo_canvas.create_oval(7, 7, 47, 47, fill="#176b87", outline="#12343b", width=2, tags="logo_ring")
+logo_canvas.create_arc(14, 14, 40, 40, start=35, extent=230, style=tk.ARC, outline="#f4f7f9", width=4, tags="logo_arc")
+logo_canvas.create_oval(24, 24, 30, 30, fill="#f4f7f9", outline="", tags="logo_dot")
 tk.Label(title_frame, text="URL Monitor", font=("Segoe UI", 22, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
 tk.Label(title_frame, text="Visibility for every endpoint", font=("Segoe UI", 10), fg="#52606d", bg="#f4f7f9").pack(side=tk.LEFT, padx=(12, 0), pady=(9, 0))
 
 run_status_label = tk.Label(title_frame, text="Ready for a new check", font=("Segoe UI", 10, "bold"), fg="#52606d", bg="#f4f7f9")
-run_status_label.pack(side=tk.RIGHT, pady=(8, 0))
+run_status_label.pack(side=tk.RIGHT, padx=(12, 0), pady=(8, 0))
+history_button = tk.Button(title_frame, text="History", command=show_history, font=button_font, fg="#176b87")
+history_button.pack(side=tk.RIGHT, pady=(8, 0))
+style_action_button(history_button, "primary")
+
+logo_phase = 0
+
+
+def animate_logo():
+    global logo_phase
+    logo_phase = (logo_phase + 1) % 24
+    pulse = 2 if logo_phase < 12 else 0
+    logo_canvas.coords("logo_ring", 7 - pulse, 7 - pulse, 47 + pulse, 47 + pulse)
+    logo_canvas.itemconfig("logo_ring", outline="#2b8aa3" if pulse else "#12343b")
+    root.after(140, animate_logo)
 
 # Left: file info + file actions
 left_frame = tk.Frame(root_frame, bg="#f4f7f9")
@@ -760,17 +987,21 @@ file_actions.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 8))
 
 choose_file_btn = tk.Button(file_actions, text="📁 Choose File...", command=browse_file, font=button_font)
 choose_file_btn.pack(side=tk.LEFT, padx=4)
+style_action_button(choose_file_btn)
 ToolTip(choose_file_btn, "Choose URL list file")
 
 check_file_btn = tk.Button(file_actions, text="🔍 Check File", command=check_file_urls, font=button_font, fg="green")
 check_file_btn.pack(side=tk.LEFT, padx=4)
+style_action_button(check_file_btn, "primary")
 ToolTip(check_file_btn, "Check all URLs in file")
 
 clear_results_btn = tk.Button(file_actions, text="🧹 Clear Results", command=clear_results, font=button_font, fg="orange")
 clear_results_btn.pack(side=tk.LEFT, padx=4)
+style_action_button(clear_results_btn, "warning")
 ToolTip(clear_results_btn, "Clear results")
 
 stop_button = tk.Button(file_actions, text="🛑 Stop", command=request_stop, font=button_font, fg="red")
+style_action_button(stop_button, "danger")
 ToolTip(stop_button, "Stop the running URL check")
 
 # Specific URL field: move under file actions (new row)
@@ -782,9 +1013,11 @@ url_entry = tk.Entry(url_frame, textvariable=specific_url_var, width=58, font=te
 url_entry.pack(side=tk.LEFT, padx=6, pady=2, ipady=4)
 specific_check_button = tk.Button(url_frame, text="🌐 Check URL", command=check_specific_url, font=button_font, state=tk.DISABLED, fg="green")
 specific_check_button.pack(side=tk.LEFT, padx=4)
+style_action_button(specific_check_button, "primary")
 ToolTip(specific_check_button, "Check this specific URL")
 clear_url_btn = tk.Button(url_frame, text="🗑️ Clear URL", command=clear_specific_url, font=button_font, state=tk.DISABLED, fg="red")
 clear_url_btn.pack(side=tk.LEFT, padx=4)
+style_action_button(clear_url_btn, "danger")
 ToolTip(clear_url_btn, "Clear URL input")
 url_entry.bind("<KeyRelease>", validate_specific_url)
 specific_url_var.trace_add('write', lambda *args: validate_specific_url())
@@ -834,6 +1067,7 @@ results_header.pack(padx=18, pady=(8, 0), fill=tk.X)
 tk.Label(results_header, text="Check results", font=("Segoe UI", 12, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
 export_button = tk.Button(results_header, text="Export Report", command=export_results, font=button_font, fg="#176b87")
 export_button.pack(side=tk.RIGHT, padx=(6, 0))
+style_action_button(export_button, "primary")
 
 output_box = scrolledtext.ScrolledText(root, width=104, height=20, bd=1, relief=tk.SUNKEN, font=("Consolas", 10), bg="#fbfcfd", fg="#172b4d", padx=8, pady=6)
 output_box.pack(padx=18, pady=(6, 14), fill=tk.BOTH, expand=True)
@@ -896,5 +1130,6 @@ def open_file_viewer():
     txt.insert(1.0, content)
     txt.config(state=tk.DISABLED)
 
+animate_logo()
 update_clock()
 root.mainloop()

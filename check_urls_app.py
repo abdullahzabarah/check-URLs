@@ -60,6 +60,9 @@ stop_button = None
 stop_requested = False
 last_run_summary = "No checks run yet"
 history_records = []
+root = None
+window_geometry = "1040x760"
+window_state = "normal"
 
 
 def save_config():
@@ -74,11 +77,21 @@ def save_config():
             except Exception:
                 default_file = current_file
 
+        current_root = globals().get("root")
+        current_state = window_state
+        current_geometry = window_geometry
+        if current_root is not None:
+            current_state = current_root.state()
+            if current_state == "normal":
+                current_geometry = current_root.geometry()
+
         with open(CONFIG_FILE, "w") as f:
             json.dump({
                 "default_file": default_file,
                 "slack_webhook_url": SLACK_WEBHOOK_URL,
                 "slack_enabled": SLACK_ENABLED,
+                "window_geometry": current_geometry,
+                "window_state": current_state,
             }, f, indent=2)
     except Exception:
         pass
@@ -121,7 +134,7 @@ def read_url_file(path):
 
 
 def load_config():
-    global current_file, SLACK_WEBHOOK_URL
+    global current_file, SLACK_WEBHOOK_URL, window_geometry, window_state
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r") as f:
@@ -130,6 +143,8 @@ def load_config():
             SLACK_WEBHOOK_URL = cfg.get("slack_webhook_url", SLACK_WEBHOOK_URL)
             global SLACK_ENABLED
             SLACK_ENABLED = cfg.get("slack_enabled", SLACK_ENABLED)
+            window_geometry = cfg.get("window_geometry", window_geometry)
+            window_state = cfg.get("window_state", window_state)
         except Exception:
             current_file = DEFAULT_FILE
     else:
@@ -216,19 +231,19 @@ class ToolTip:
 
 BUTTON_THEMES = {
     "primary": {
-        "bg": "#176b87", "hover": "#2b8aa3", "pressed": "#0f5268",
+        "bg": "#176b87", "hover": "#2b8aa3", "pressed": "#0f5268", "border": "#0f5268",
         "fg": "#ffffff", "active_fg": "#ffffff",
     },
     "neutral": {
-        "bg": "#e7eef2", "hover": "#d4e3e8", "pressed": "#bed2d9",
+        "bg": "#ffffff", "hover": "#eef5f7", "pressed": "#dbe9ed", "border": "#b9cbd1",
         "fg": "#12343b", "active_fg": "#12343b",
     },
     "warning": {
-        "bg": "#fff0d9", "hover": "#ffe2b3", "pressed": "#f4c982",
+        "bg": "#fff7e8", "hover": "#ffefd0", "pressed": "#f8d99e", "border": "#e6b85c",
         "fg": "#8a4300", "active_fg": "#6d3300",
     },
     "danger": {
-        "bg": "#fde8e7", "hover": "#f9cfcd", "pressed": "#efa9a6",
+        "bg": "#fff4f3", "hover": "#ffe5e3", "pressed": "#f8c5c1", "border": "#df9690",
         "fg": "#a61e1e", "active_fg": "#861818",
     },
 }
@@ -243,13 +258,15 @@ def style_action_button(button, tone="neutral"):
         activeforeground=theme["active_fg"],
         disabledforeground="#9aa8ad",
         relief=tk.FLAT,
-        overrelief=tk.RAISED,
-        bd=0,
-        highlightthickness=2,
-        highlightbackground="#d7e2e6",
+        overrelief=tk.FLAT,
+        bd=1,
+        borderwidth=1,
+        highlightthickness=1,
+        highlightbackground=theme["border"],
         highlightcolor="#2b8aa3",
-        padx=11,
-        pady=6,
+        padx=12,
+        pady=5,
+        font=(UI_FONT_FAMILY, 10, "bold"),
         cursor="hand2",
     )
 
@@ -263,7 +280,7 @@ def style_action_button(button, tone="neutral"):
 
     def on_press(event):
         if button["state"] != tk.DISABLED:
-            button.configure(bg=theme["pressed"], relief=tk.SUNKEN)
+            button.configure(bg=theme["pressed"], relief=tk.FLAT, highlightbackground=theme["border"])
 
     def on_release(event):
         if button["state"] != tk.DISABLED:
@@ -275,6 +292,48 @@ def style_action_button(button, tone="neutral"):
     button.bind("<ButtonPress-1>", on_press, add="+")
     button.bind("<ButtonRelease-1>", on_release, add="+")
     return button
+
+
+class StatusLabel(tk.Canvas):
+    def __init__(self, master, text, font, fg, bg, padx=10, pady=10, **kwargs):
+        self._text = text
+        self._font = tkfont.Font(font=font)
+        self._text_color = fg
+        self._fill_color = bg
+        self._padx = padx
+        self._pady = pady
+        width = self._font.measure(text) + (padx * 2)
+        height = self._font.metrics("linespace") + (pady * 2)
+        super().__init__(
+            master,
+            width=width,
+            height=height,
+            bg=master.cget("bg"),
+            highlightthickness=0,
+            bd=0,
+            **kwargs,
+        )
+        self._draw()
+
+    def _draw(self):
+        self.delete("all")
+        width = int(self["width"])
+        height = int(self["height"])
+        self.create_rectangle(0, 0, width, height, fill=self._fill_color, outline="#d7e2e6")
+        self.create_rectangle(0, 0, 4, height, fill=self._text_color, outline="")
+        self.create_text(self._padx + 3, height // 2, text=self._text, anchor="w", font=self._font, fill="#12343b")
+
+    def configure(self, cnf=None, **kwargs):
+        if cnf:
+            kwargs.update(cnf)
+        self._text = kwargs.pop("text", self._text)
+        self._text_color = kwargs.pop("fg", kwargs.pop("foreground", self._text_color))
+        self._fill_color = kwargs.pop("bg", kwargs.pop("background", self._fill_color))
+        if kwargs:
+            super().configure(**kwargs)
+        self._draw()
+
+    config = configure
 
 
 def reset_dashboard():
@@ -321,6 +380,52 @@ def extract_url_from_line(text):
     return None
 
 
+def animate_url_to_field(url, event):
+    try:
+        start_x = event.x_root - root.winfo_rootx()
+        start_y = event.y_root - root.winfo_rooty()
+        target_x = url_entry.winfo_rootx() - root.winfo_rootx() + 6
+        target_y = url_entry.winfo_rooty() - root.winfo_rooty() + (url_entry.winfo_height() // 2)
+        flight = tk.Label(
+            root,
+            text=url,
+            anchor="w",
+            bg="#ffffff",
+            fg="#176b87",
+            relief=tk.SOLID,
+            bd=1,
+            padx=7,
+            pady=3,
+            font=(UI_FONT_FAMILY, 9),
+        )
+        flight.update_idletasks()
+        flight.configure(width=52, wraplength=340)
+        flight.place(x=start_x, y=start_y, anchor="w")
+
+        duration = 360
+        steps = 18
+
+        def move(step=0):
+            if not flight.winfo_exists():
+                return
+            progress = step / steps
+            eased = 1 - ((1 - progress) ** 3)
+            x = start_x + ((target_x - start_x) * eased)
+            y = start_y + ((target_y - start_y) * eased)
+            flight.place(x=round(x), y=round(y))
+            if step < steps:
+                root.after(duration // steps, lambda: move(step + 1))
+            else:
+                flight.destroy()
+                specific_url_var.set(url)
+                validate_specific_url()
+
+        move()
+    except Exception:
+        specific_url_var.set(url)
+        validate_specific_url()
+
+
 def on_output_click(event):
     index = event.widget.index(f"@{event.x},{event.y}")
     line_start = event.widget.index(f"{index} linestart")
@@ -328,8 +433,7 @@ def on_output_click(event):
     line_text = event.widget.get(line_start, line_end)
     url = extract_url_from_line(line_text)
     if url:
-        specific_url_var.set(url)
-        validate_specific_url()
+        animate_url_to_field(url, event)
         # copy to clipboard
         try:
             root.clipboard_clear()
@@ -842,6 +946,23 @@ root.title("URL Monitor")
 root.geometry("1040x760")
 root.minsize(900, 650)
 root.configure(bg="#f4f7f9")
+try:
+    root.geometry(window_geometry)
+except tk.TclError:
+    root.geometry("1040x760")
+if window_state in ("normal", "zoomed", "iconic"):
+    try:
+        root.state(window_state)
+    except tk.TclError:
+        pass
+
+
+def close_app():
+    save_config()
+    root.destroy()
+
+
+root.protocol("WM_DELETE_WINDOW", close_app)
 if sys.platform == "darwin":
     # Keep baseline colors explicit on macOS where Tk can inherit low-contrast defaults.
     root.option_add("*Label.Background", "#f4f7f9")
@@ -890,7 +1011,7 @@ menu_bar = tk.Menu(root)
 file_menu = tk.Menu(menu_bar, tearoff=0)
 file_menu.add_command(label="Choose Default File...", command=configure_default_file)
 file_menu.add_separator()
-file_menu.add_command(label="Exit", command=root.quit)
+file_menu.add_command(label="Exit", command=close_app)
 menu_bar.add_cascade(label="File", menu=file_menu)
 
 # Unified Settings dialog
@@ -1084,10 +1205,10 @@ dashboard_frame.pack(padx=18, pady=(2, 4), fill=tk.X)
 for column in range(4):
     dashboard_frame.columnconfigure(column, weight=1)
 
-total_label = tk.Label(dashboard_frame, text="Total checked: 0", anchor="w", font=(UI_FONT_FAMILY, 11, "bold"), bg="#e7eef2", fg="#12343b", padx=10, pady=10)
-healthy_label = tk.Label(dashboard_frame, text="Healthy: 0", fg="#087f5b", anchor="w", font=(UI_FONT_FAMILY, 11, "bold"), bg="#e3f4ed", padx=10, pady=10)
-warning_label = tk.Label(dashboard_frame, text="Warnings: 0", fg="#b54708", anchor="w", font=(UI_FONT_FAMILY, 11, "bold"), bg="#fff0d9", padx=10, pady=10)
-error_label = tk.Label(dashboard_frame, text="Errors: 0", fg="#c92a2a", anchor="w", font=(UI_FONT_FAMILY, 11, "bold"), bg="#fde8e7", padx=10, pady=10)
+total_label = StatusLabel(dashboard_frame, text="Total checked: 0", font=(UI_FONT_FAMILY, 11, "bold"), bg="#e7eef2", fg="#176b87")
+healthy_label = StatusLabel(dashboard_frame, text="Healthy: 0", fg="#087f5b", font=(UI_FONT_FAMILY, 11, "bold"), bg="#e3f4ed")
+warning_label = StatusLabel(dashboard_frame, text="Warnings: 0", fg="#b54708", font=(UI_FONT_FAMILY, 11, "bold"), bg="#fff0d9")
+error_label = StatusLabel(dashboard_frame, text="Errors: 0", fg="#c92a2a", font=(UI_FONT_FAMILY, 11, "bold"), bg="#fde8e7")
 elapsed_label = tk.Label(dashboard_frame, text="Elapsed: 0.0s", anchor="w", font=(UI_FONT_FAMILY, 10), bg="#f4f7f9", fg="#52606d")
 last_checked_label = tk.Label(dashboard_frame, text="Last checked: -", anchor="w", font=(UI_FONT_FAMILY, 10), bg="#f4f7f9", fg="#52606d")
 health_rate_label = tk.Label(dashboard_frame, text="Health rate: -", anchor="w", font=(UI_FONT_FAMILY, 10, "bold"), bg="#f4f7f9", fg="#176b87")

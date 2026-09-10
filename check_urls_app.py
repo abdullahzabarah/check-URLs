@@ -866,20 +866,21 @@ def show_about():
     about_win.geometry("420x220")
     about_win.transient(root)
     about_win.resizable(False, False)
+    about_win.configure(bg=BG_COLOR)
 
     pad = 10
-    tk.Label(about_win, text="URL Monitor", font=(UI_FONT_FAMILY, 14, "bold")).pack(pady=(pad, 0))
-    tk.Label(about_win, text=f"Version {APP_VERSION}", font=(UI_FONT_FAMILY, 10)).pack()
-    tk.Label(about_win, text="A simple URL checking tool with Slack alerts and clickable logs.", wraplength=380, justify="left", font=(UI_FONT_FAMILY, 9)).pack(pady=(6, 6))
+    tk.Label(about_win, text="URL Monitor", font=(UI_FONT_FAMILY, 14, "bold"), bg=BG_COLOR, fg=FG_COLOR).pack(pady=(pad, 0))
+    tk.Label(about_win, text=f"Version {APP_VERSION}", font=(UI_FONT_FAMILY, 10), bg=BG_COLOR, fg=FG_COLOR).pack()
+    tk.Label(about_win, text="A simple URL checking tool with Slack alerts and clickable logs.", wraplength=380, justify="left", font=(UI_FONT_FAMILY, 9), bg=BG_COLOR, fg=FG_COLOR).pack(pady=(6, 6))
 
-    tk.Label(about_win, text="Created by Abdullah Zabarah", font=(UI_FONT_FAMILY, 10, "bold")).pack()
-    tk.Label(about_win, text="abdullahzabarah@gmail.com", font=(UI_FONT_FAMILY, 9)).pack()
-    tk.Label(about_win, text=f"© {APP_YEAR} Abdullah Zabarah", font=(UI_FONT_FAMILY, 9)).pack(pady=(4, 0))
-    tk.Label(about_win, text="Licensed under the MIT License", font=(UI_FONT_FAMILY, 9)).pack(pady=(2, 0))
+    tk.Label(about_win, text="Created by Abdullah Zabarah", font=(UI_FONT_FAMILY, 10, "bold"), bg=BG_COLOR, fg=FG_COLOR).pack()
+    tk.Label(about_win, text="abdullahzabarah@gmail.com", font=(UI_FONT_FAMILY, 9), bg=BG_COLOR, fg=FG_COLOR).pack()
+    tk.Label(about_win, text=f"© {APP_YEAR} Abdullah Zabarah", font=(UI_FONT_FAMILY, 9), bg=BG_COLOR, fg=FG_COLOR).pack(pady=(4, 0))
+    tk.Label(about_win, text="Licensed under the MIT License", font=(UI_FONT_FAMILY, 9), bg=BG_COLOR, fg=FG_COLOR).pack(pady=(2, 0))
 
     repo_url = "https://github.com/abdullahzabarah/check-URLs.git"
     link_font = tkfont.Font(about_win, family=UI_FONT_FAMILY, size=9, underline=1)
-    repo_lbl = tk.Label(about_win, text=repo_url, fg="#0000ee", cursor="hand2", font=link_font)
+    repo_lbl = tk.Label(about_win, text=repo_url, fg="#0000ee", cursor="hand2", font=link_font, bg=BG_COLOR)
     repo_lbl.pack(pady=(6, 6))
 
     def open_repo(event=None):
@@ -922,13 +923,14 @@ def show_instructions():
     win.resizable(True, True)
     win.columnconfigure(0, weight=1)
     win.rowconfigure(0, weight=1)
+    win.configure(bg=BG_COLOR)
 
-    txt = scrolledtext.ScrolledText(win, wrap=tk.WORD, font=(UI_FONT_FAMILY, 10))
+    txt = scrolledtext.ScrolledText(win, wrap=tk.WORD, font=(UI_FONT_FAMILY, 10), bg=TEXT_BG, fg=TEXT_FG)
     txt.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
     txt.insert(tk.END, text)
     txt.config(state=tk.DISABLED)
 
-    btn = tk.Button(win, text="Close", command=win.destroy, width=10)
+    btn = tk.Button(win, text="Close", command=win.destroy, width=10, bg=BG_COLOR, fg=FG_COLOR)
     btn.grid(row=1, column=0, sticky="e", padx=8, pady=(0,8))
     style_action_button(btn)
 
@@ -963,24 +965,33 @@ def close_app():
 
 
 root.protocol("WM_DELETE_WINDOW", close_app)
+
+# Color palette for consistent macOS compatibility
+BG_COLOR = "#f4f7f9"
+FG_COLOR = "#12343b"
+ENTRY_BG = "#ffffff"
+ENTRY_FG = "#12343b"
+TEXT_BG = "#fbfcfd"
+TEXT_FG = "#172b4d"
+
 if sys.platform == "darwin":
     # Keep baseline colors explicit on macOS where Tk can inherit low-contrast defaults.
-    root.option_add("*Label.Background", "#f4f7f9")
-    root.option_add("*Label.Foreground", "#12343b")
-    root.option_add("*Frame.Background", "#f4f7f9")
-    root.option_add("*Toplevel.Background", "#f4f7f9")
-    root.option_add("*Menu.Background", "#f4f7f9")
-    root.option_add("*Menu.Foreground", "#12343b")
-    root.option_add("*Entry.Background", "#ffffff")
-    root.option_add("*Entry.Foreground", "#12343b")
-    root.option_add("*Text.Background", "#fbfcfd")
-    root.option_add("*Text.Foreground", "#172b4d")
+    root.option_add("*Label.Background", BG_COLOR)
+    root.option_add("*Label.Foreground", FG_COLOR)
+    root.option_add("*Frame.Background", BG_COLOR)
+    root.option_add("*Toplevel.Background", BG_COLOR)
+    root.option_add("*Menu.Background", BG_COLOR)
+    root.option_add("*Menu.Foreground", FG_COLOR)
+    root.option_add("*Entry.Background", ENTRY_BG)
+    root.option_add("*Entry.Foreground", ENTRY_FG)
+    root.option_add("*Text.Background", TEXT_BG)
+    root.option_add("*Text.Foreground", TEXT_FG)
     try:
         root.tk_setPalette(
-            background="#f4f7f9",
-            foreground="#12343b",
+            background=BG_COLOR,
+            foreground=FG_COLOR,
             activeBackground="#d4e3e8",
-            activeForeground="#12343b",
+            activeForeground=FG_COLOR,
         )
     except tk.TclError:
         pass
@@ -1043,6 +1054,7 @@ def open_settings():
     settings_win.transient(root)
     settings_win.resizable(True, False)
     settings_win.columnconfigure(1, weight=1)
+    settings_win.configure(bg=BG_COLOR)
 
     display_default_file = current_file
     try:
@@ -1056,23 +1068,23 @@ def open_settings():
     slack_var = tk.StringVar(value=SLACK_WEBHOOK_URL)
     slack_enabled_var = tk.BooleanVar(value=SLACK_ENABLED)
 
-    tk.Label(settings_win, text="Default URL file:", font=label_font).grid(row=0, column=0, sticky="w", padx=10, pady=8)
-    tk.Entry(settings_win, textvariable=default_file_var, font=text_font).grid(row=0, column=1, padx=6, pady=8, sticky="ew")
-    browse_button = tk.Button(settings_win, text="Browse...", command=browse_for_file)
+    tk.Label(settings_win, text="Default URL file:", font=label_font, bg=BG_COLOR, fg=FG_COLOR).grid(row=0, column=0, sticky="w", padx=10, pady=8)
+    tk.Entry(settings_win, textvariable=default_file_var, font=text_font, bg=ENTRY_BG, fg=ENTRY_FG).grid(row=0, column=1, padx=6, pady=8, sticky="ew")
+    browse_button = tk.Button(settings_win, text="Browse...", command=browse_for_file, bg=BG_COLOR, fg=FG_COLOR)
     browse_button.grid(row=0, column=2, padx=6, pady=8)
     style_action_button(browse_button)
 
-    tk.Label(settings_win, text="Slack Webhook URL:", font=label_font).grid(row=1, column=0, sticky="w", padx=10, pady=8)
-    tk.Entry(settings_win, textvariable=slack_var, font=text_font).grid(row=1, column=1, columnspan=2, padx=6, pady=8, sticky="ew")
+    tk.Label(settings_win, text="Slack Webhook URL:", font=label_font, bg=BG_COLOR, fg=FG_COLOR).grid(row=1, column=0, sticky="w", padx=10, pady=8)
+    tk.Entry(settings_win, textvariable=slack_var, font=text_font, bg=ENTRY_BG, fg=ENTRY_FG).grid(row=1, column=1, columnspan=2, padx=6, pady=8, sticky="ew")
 
-    tk.Checkbutton(settings_win, text="Enable Slack alerts", variable=slack_enabled_var).grid(row=2, column=0, columnspan=3, sticky="w", padx=10, pady=8)
+    tk.Checkbutton(settings_win, text="Enable Slack alerts", variable=slack_enabled_var, bg=BG_COLOR, fg=FG_COLOR).grid(row=2, column=0, columnspan=3, sticky="w", padx=10, pady=8)
 
-    btn_frame = tk.Frame(settings_win)
+    btn_frame = tk.Frame(settings_win, bg=BG_COLOR)
     btn_frame.grid(row=3, column=0, columnspan=3, sticky="e", padx=6, pady=12)
-    save_button = tk.Button(btn_frame, text="Save", command=save_and_close, width=12)
+    save_button = tk.Button(btn_frame, text="Save", command=save_and_close, width=12, bg=BG_COLOR, fg=FG_COLOR)
     save_button.pack(side=tk.RIGHT, padx=(6,0))
     style_action_button(save_button, "primary")
-    cancel_button = tk.Button(btn_frame, text="Cancel", command=settings_win.destroy, width=12)
+    cancel_button = tk.Button(btn_frame, text="Cancel", command=settings_win.destroy, width=12, bg=BG_COLOR, fg=FG_COLOR)
     cancel_button.pack(side=tk.RIGHT, padx=(6,0))
     style_action_button(cancel_button)
 
@@ -1289,7 +1301,8 @@ def open_file_viewer():
     win = tk.Toplevel(root)
     win.title(f"Contents: {os.path.basename(path)}")
     win.geometry("700x500")
-    txt = scrolledtext.ScrolledText(win, width=100, height=30, font=(MONO_FONT_FAMILY, 10))
+    win.configure(bg=BG_COLOR)
+    txt = scrolledtext.ScrolledText(win, width=100, height=30, font=(MONO_FONT_FAMILY, 10), bg=TEXT_BG, fg=TEXT_FG)
     txt.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
     txt.insert(1.0, content)
     txt.config(state=tk.DISABLED)

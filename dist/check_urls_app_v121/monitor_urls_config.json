@@ -1,7 +1,0 @@
-{
-  "default_file": "urls.txt",
-  "slack_webhook_url": "SLACK_WEBHOOK_URL",
-  "slack_enabled": true,
-  "window_geometry": "1040x760+78+0",
-  "window_state": "normal"
-}

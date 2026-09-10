@@ -10,6 +10,9 @@ import tkinter.font as tkfont
 from tkinter import scrolledtext, filedialog, ttk, simpledialog, messagebox
 import webbrowser
 
+if sys.platform == "darwin":
+    os.environ.setdefault("TK_SILENCE_DEPRECATION", "1")
+
 # === SLACK WEBHOOK ===
 SLACK_WEBHOOK_URL = "SLACK_WEBHOOK_URL"
 
@@ -28,6 +31,9 @@ if sys.platform == "darwin":
 else:
     base_path = executable_path
 
+UI_FONT_FAMILY = "Helvetica" if sys.platform == "darwin" else "Segoe UI"
+MONO_FONT_FAMILY = "Menlo" if sys.platform == "darwin" else "Consolas"
+
 DEFAULT_FILE = os.path.join(base_path, "urls.txt")
 bundled_default_file = os.path.join(resource_path, "urls.txt")
 if not os.path.exists(DEFAULT_FILE) and os.path.exists(bundled_default_file):
@@ -37,7 +43,7 @@ if not os.path.exists(DEFAULT_FILE) and os.path.exists(bundled_default_file):
         pass
 
 current_file = DEFAULT_FILE
-APP_VERSION = "1.2"
+APP_VERSION = "1.2.1"
 APP_YEAR = time.strftime('%Y')
 CONFIG_FILE = os.path.join(base_path, "monitor_urls_config.json")
 HISTORY_FILE = os.path.join(base_path, "check_history.json")
@@ -199,7 +205,7 @@ class ToolTip:
         self.tipwindow = tw = tk.Toplevel(self.widget)
         tw.wm_overrideredirect(True)
         tw.wm_geometry(f"+{x}+{y}")
-        label = tk.Label(tw, text=self.text, justify=tk.LEFT, background="#fff8d5", relief=tk.SOLID, borderwidth=1, font=("Segoe UI", 9))
+        label = tk.Label(tw, text=self.text, justify=tk.LEFT, background="#fff8d5", relief=tk.SOLID, borderwidth=1, font=(UI_FONT_FAMILY, 9))
         label.pack(ipadx=4, ipady=2)
 
     def hide_tip(self, event=None):
@@ -332,7 +338,7 @@ def on_output_click(event):
             pass
         # temporary 'Copied!' tag next to URL entry
         try:
-            copied_lbl = tk.Label(root, text="Copied!", fg="#008000", bg="#ffffe0", relief=tk.SOLID, borderwidth=1, font=("Segoe UI", 9))
+            copied_lbl = tk.Label(root, text="Copied!", fg="#008000", bg="#ffffe0", relief=tk.SOLID, borderwidth=1, font=(UI_FONT_FAMILY, 9))
             # place it near the mouse cursor
             rx = event.x_root - root.winfo_rootx()
             ry = event.y_root - root.winfo_rooty()
@@ -672,8 +678,8 @@ def show_history():
 
     header = tk.Frame(history_win, bg="#f4f7f9")
     header.grid(row=0, column=0, sticky="ew", padx=18, pady=(16, 8))
-    tk.Label(header, text="Check History", font=("Segoe UI", 18, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
-    tk.Label(header, text="Your last 100 monitoring runs", font=("Segoe UI", 10), fg="#52606d", bg="#f4f7f9").pack(side=tk.LEFT, padx=(12, 0), pady=(6, 0))
+    tk.Label(header, text="Check History", font=(UI_FONT_FAMILY, 18, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
+    tk.Label(header, text="Your last 100 monitoring runs", font=(UI_FONT_FAMILY, 10), fg="#52606d", bg="#f4f7f9").pack(side=tk.LEFT, padx=(12, 0), pady=(6, 0))
 
     table_frame = tk.Frame(history_win, bg="#f4f7f9")
     table_frame.grid(row=1, column=0, sticky="nsew", padx=18, pady=4)
@@ -712,7 +718,7 @@ def show_history():
 
     footer = tk.Frame(history_win, bg="#f4f7f9")
     footer.grid(row=2, column=0, sticky="ew", padx=18, pady=(8, 16))
-    count_label = tk.Label(footer, text="0 saved runs", font=("Segoe UI", 9), fg="#52606d", bg="#f4f7f9")
+    count_label = tk.Label(footer, text="0 saved runs", font=(UI_FONT_FAMILY, 9), fg="#52606d", bg="#f4f7f9")
     count_label.pack(side=tk.LEFT)
 
     def purge_history():
@@ -758,17 +764,17 @@ def show_about():
     about_win.resizable(False, False)
 
     pad = 10
-    tk.Label(about_win, text="URL Monitor", font=("Segoe UI", 14, "bold")).pack(pady=(pad, 0))
-    tk.Label(about_win, text=f"Version {APP_VERSION}", font=("Segoe UI", 10)).pack()
-    tk.Label(about_win, text="A simple URL checking tool with Slack alerts and clickable logs.", wraplength=380, justify="left", font=("Segoe UI", 9)).pack(pady=(6, 6))
+    tk.Label(about_win, text="URL Monitor", font=(UI_FONT_FAMILY, 14, "bold")).pack(pady=(pad, 0))
+    tk.Label(about_win, text=f"Version {APP_VERSION}", font=(UI_FONT_FAMILY, 10)).pack()
+    tk.Label(about_win, text="A simple URL checking tool with Slack alerts and clickable logs.", wraplength=380, justify="left", font=(UI_FONT_FAMILY, 9)).pack(pady=(6, 6))
 
-    tk.Label(about_win, text="Created by Abdullah Zabarah", font=("Segoe UI", 10, "bold")).pack()
-    tk.Label(about_win, text="abdullahzabarah@gmail.com", font=("Segoe UI", 9)).pack()
-    tk.Label(about_win, text=f"© {APP_YEAR} Abdullah Zabarah", font=("Segoe UI", 9)).pack(pady=(4, 0))
-    tk.Label(about_win, text="Licensed under the MIT License", font=("Segoe UI", 9)).pack(pady=(2, 0))
+    tk.Label(about_win, text="Created by Abdullah Zabarah", font=(UI_FONT_FAMILY, 10, "bold")).pack()
+    tk.Label(about_win, text="abdullahzabarah@gmail.com", font=(UI_FONT_FAMILY, 9)).pack()
+    tk.Label(about_win, text=f"© {APP_YEAR} Abdullah Zabarah", font=(UI_FONT_FAMILY, 9)).pack(pady=(4, 0))
+    tk.Label(about_win, text="Licensed under the MIT License", font=(UI_FONT_FAMILY, 9)).pack(pady=(2, 0))
 
     repo_url = "https://github.com/abdullahzabarah/check-URLs.git"
-    link_font = tkfont.Font(about_win, family="Segoe UI", size=9, underline=1)
+    link_font = tkfont.Font(about_win, family=UI_FONT_FAMILY, size=9, underline=1)
     repo_lbl = tk.Label(about_win, text=repo_url, fg="#0000ee", cursor="hand2", font=link_font)
     repo_lbl.pack(pady=(6, 6))
 
@@ -813,7 +819,7 @@ def show_instructions():
     win.columnconfigure(0, weight=1)
     win.rowconfigure(0, weight=1)
 
-    txt = scrolledtext.ScrolledText(win, wrap=tk.WORD, font=("Segoe UI", 10))
+    txt = scrolledtext.ScrolledText(win, wrap=tk.WORD, font=(UI_FONT_FAMILY, 10))
     txt.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
     txt.insert(tk.END, text)
     txt.config(state=tk.DISABLED)
@@ -836,6 +842,27 @@ root.title("URL Monitor")
 root.geometry("1040x760")
 root.minsize(900, 650)
 root.configure(bg="#f4f7f9")
+if sys.platform == "darwin":
+    # Keep baseline colors explicit on macOS where Tk can inherit low-contrast defaults.
+    root.option_add("*Label.Background", "#f4f7f9")
+    root.option_add("*Label.Foreground", "#12343b")
+    root.option_add("*Frame.Background", "#f4f7f9")
+    root.option_add("*Toplevel.Background", "#f4f7f9")
+    root.option_add("*Menu.Background", "#f4f7f9")
+    root.option_add("*Menu.Foreground", "#12343b")
+    root.option_add("*Entry.Background", "#ffffff")
+    root.option_add("*Entry.Foreground", "#12343b")
+    root.option_add("*Text.Background", "#fbfcfd")
+    root.option_add("*Text.Foreground", "#172b4d")
+    try:
+        root.tk_setPalette(
+            background="#f4f7f9",
+            foreground="#12343b",
+            activeBackground="#d4e3e8",
+            activeForeground="#12343b",
+        )
+    except tk.TclError:
+        pass
 try:
     if os.path.exists(ICON_FILE):
         root.iconbitmap(ICON_FILE)
@@ -849,15 +876,16 @@ progress_var = tk.DoubleVar(value=0.0)
 
 # Use a restrained native theme with a stronger information hierarchy.
 style = ttk.Style(root)
-try:
-    style.theme_use("clam")
-except tk.TclError:
-    pass
+if sys.platform != "darwin":
+    try:
+        style.theme_use("clam")
+    except tk.TclError:
+        pass
 style.configure("Monitor.Horizontal.TProgressbar", troughcolor="#dfe8ed", background="#176b87", lightcolor="#176b87", darkcolor="#176b87", borderwidth=0)
 
-button_font = ("Segoe UI", 10)
-label_font = ("Segoe UI", 10, "bold")
-text_font = ("Segoe UI", 10)
+button_font = (UI_FONT_FAMILY, 10)
+label_font = (UI_FONT_FAMILY, 10, "bold")
+text_font = (UI_FONT_FAMILY, 10)
 menu_bar = tk.Menu(root)
 file_menu = tk.Menu(menu_bar, tearoff=0)
 file_menu.add_command(label="Choose Default File...", command=configure_default_file)
@@ -951,10 +979,10 @@ logo_canvas.pack(side=tk.LEFT, padx=(0, 10))
 logo_canvas.create_oval(7, 7, 47, 47, fill="#176b87", outline="#12343b", width=2, tags="logo_ring")
 logo_canvas.create_arc(14, 14, 40, 40, start=35, extent=230, style=tk.ARC, outline="#f4f7f9", width=4, tags="logo_arc")
 logo_canvas.create_oval(24, 24, 30, 30, fill="#f4f7f9", outline="", tags="logo_dot")
-tk.Label(title_frame, text="URL Monitor", font=("Segoe UI", 22, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
-tk.Label(title_frame, text="Visibility for every endpoint", font=("Segoe UI", 10), fg="#52606d", bg="#f4f7f9").pack(side=tk.LEFT, padx=(12, 0), pady=(9, 0))
+tk.Label(title_frame, text="URL Monitor", font=(UI_FONT_FAMILY, 22, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
+tk.Label(title_frame, text="Visibility for every endpoint", font=(UI_FONT_FAMILY, 10), fg="#52606d", bg="#f4f7f9").pack(side=tk.LEFT, padx=(12, 0), pady=(9, 0))
 
-run_status_label = tk.Label(title_frame, text="Ready for a new check", font=("Segoe UI", 10, "bold"), fg="#52606d", bg="#f4f7f9")
+run_status_label = tk.Label(title_frame, text="Ready for a new check", font=(UI_FONT_FAMILY, 10, "bold"), fg="#52606d", bg="#f4f7f9")
 run_status_label.pack(side=tk.RIGHT, padx=(12, 0), pady=(8, 0))
 history_button = tk.Button(title_frame, text="History", command=show_history, font=button_font, fg="#176b87")
 history_button.pack(side=tk.RIGHT, pady=(8, 0))
@@ -975,10 +1003,10 @@ def animate_logo():
 left_frame = tk.Frame(root_frame, bg="#f4f7f9")
 left_frame.pack(side=tk.LEFT, anchor="w")
 
-file_label = tk.Label(left_frame, text=f"Using file: {current_file}", font=("Segoe UI", 12, "bold"), fg="#12343b", bg="#f4f7f9")
+file_label = tk.Label(left_frame, text=f"Using file: {current_file}", font=(UI_FONT_FAMILY, 12, "bold"), fg="#12343b", bg="#f4f7f9")
 file_label.grid(row=0, column=0, sticky="w", pady=(12, 4))
-file_font = tkfont.Font(family="Segoe UI", size=12, weight="bold")
-file_font_underline = tkfont.Font(family="Segoe UI", size=12, weight="bold", underline=1)
+file_font = tkfont.Font(family=UI_FONT_FAMILY, size=12, weight="bold")
+file_font_underline = tkfont.Font(family=UI_FONT_FAMILY, size=12, weight="bold", underline=1)
 file_label.config(font=file_font)
 
 def _on_file_enter(e):
@@ -991,46 +1019,46 @@ file_label.bind("<Button-1>", lambda e: open_file_viewer())
 file_label.bind("<Enter>", _on_file_enter)
 file_label.bind("<Leave>", _on_file_leave)
 
-source_count_label = tk.Label(left_frame, text="0 targets", font=("Segoe UI", 9, "bold"), fg="#176b87", bg="#f4f7f9")
+source_count_label = tk.Label(left_frame, text="0 targets", font=(UI_FONT_FAMILY, 9, "bold"), fg="#176b87", bg="#f4f7f9")
 source_count_label.grid(row=0, column=1, sticky="w", padx=(10, 0), pady=(12, 4))
 
-file_stats_label = tk.Label(left_frame, text="0 ready  |  0 invalid  |  0 duplicates", font=("Segoe UI", 9), fg="#52606d", bg="#f4f7f9")
+file_stats_label = tk.Label(left_frame, text="0 ready  |  0 invalid  |  0 duplicates", font=(UI_FONT_FAMILY, 9), fg="#52606d", bg="#f4f7f9")
 file_stats_label.grid(row=1, column=0, columnspan=2, sticky="w")
 
 file_actions = tk.Frame(left_frame, bg="#f4f7f9")
 file_actions.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 8))
 
-choose_file_btn = tk.Button(file_actions, text="📁 Choose File...", command=browse_file, font=button_font)
+choose_file_btn = tk.Button(file_actions, text="Choose File...", command=browse_file, font=button_font)
 choose_file_btn.pack(side=tk.LEFT, padx=4)
 style_action_button(choose_file_btn)
 ToolTip(choose_file_btn, "Choose URL list file")
 
-check_file_btn = tk.Button(file_actions, text="🔍 Check File", command=check_file_urls, font=button_font, fg="green")
+check_file_btn = tk.Button(file_actions, text="Check File", command=check_file_urls, font=button_font, fg="green")
 check_file_btn.pack(side=tk.LEFT, padx=4)
 style_action_button(check_file_btn, "primary")
 ToolTip(check_file_btn, "Check all URLs in file")
 
-clear_results_btn = tk.Button(file_actions, text="🧹 Clear Results", command=clear_results, font=button_font, fg="orange")
+clear_results_btn = tk.Button(file_actions, text="Clear Results", command=clear_results, font=button_font, fg="orange")
 clear_results_btn.pack(side=tk.LEFT, padx=4)
 style_action_button(clear_results_btn, "warning")
 ToolTip(clear_results_btn, "Clear results")
 
-stop_button = tk.Button(file_actions, text="🛑 Stop", command=request_stop, font=button_font, fg="red")
+stop_button = tk.Button(file_actions, text="Stop", command=request_stop, font=button_font, fg="red")
 style_action_button(stop_button, "danger")
 ToolTip(stop_button, "Stop the running URL check")
 
 # Specific URL field: move under file actions (new row)
-url_frame = tk.Frame(left_frame)
+url_frame = tk.Frame(left_frame, bg="#f4f7f9")
 url_frame.grid(row=3, column=0, columnspan=2, sticky="w", pady=(6,8))
 
-tk.Label(url_frame, text="Specific URL to check:", font=label_font).pack(side=tk.LEFT)
+tk.Label(url_frame, text="Specific URL to check:", font=label_font, fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
 url_entry = tk.Entry(url_frame, textvariable=specific_url_var, width=58, font=text_font, bd=1, relief=tk.FLAT)
 url_entry.pack(side=tk.LEFT, padx=6, pady=2, ipady=4)
-specific_check_button = tk.Button(url_frame, text="🌐 Check URL", command=check_specific_url, font=button_font, state=tk.DISABLED, fg="green")
+specific_check_button = tk.Button(url_frame, text="Check URL", command=check_specific_url, font=button_font, state=tk.DISABLED, fg="green")
 specific_check_button.pack(side=tk.LEFT, padx=4)
 style_action_button(specific_check_button, "primary")
 ToolTip(specific_check_button, "Check this specific URL")
-clear_url_btn = tk.Button(url_frame, text="🗑️ Clear URL", command=clear_specific_url, font=button_font, state=tk.DISABLED, fg="red")
+clear_url_btn = tk.Button(url_frame, text="Clear URL", command=clear_specific_url, font=button_font, state=tk.DISABLED, fg="red")
 clear_url_btn.pack(side=tk.LEFT, padx=4)
 style_action_button(clear_url_btn, "danger")
 ToolTip(clear_url_btn, "Clear URL input")
@@ -1056,15 +1084,15 @@ dashboard_frame.pack(padx=18, pady=(2, 4), fill=tk.X)
 for column in range(4):
     dashboard_frame.columnconfigure(column, weight=1)
 
-total_label = tk.Label(dashboard_frame, text="Total checked: 0", anchor="w", font=("Segoe UI", 11, "bold"), bg="#e7eef2", fg="#12343b", padx=10, pady=10)
-healthy_label = tk.Label(dashboard_frame, text="Healthy: 0", fg="#087f5b", anchor="w", font=("Segoe UI", 11, "bold"), bg="#e3f4ed", padx=10, pady=10)
-warning_label = tk.Label(dashboard_frame, text="Warnings: 0", fg="#b54708", anchor="w", font=("Segoe UI", 11, "bold"), bg="#fff0d9", padx=10, pady=10)
-error_label = tk.Label(dashboard_frame, text="Errors: 0", fg="#c92a2a", anchor="w", font=("Segoe UI", 11, "bold"), bg="#fde8e7", padx=10, pady=10)
-elapsed_label = tk.Label(dashboard_frame, text="Elapsed: 0.0s", anchor="w", font=("Segoe UI", 10), bg="#f4f7f9", fg="#52606d")
-last_checked_label = tk.Label(dashboard_frame, text="Last checked: -", anchor="w", font=("Segoe UI", 10), bg="#f4f7f9", fg="#52606d")
-health_rate_label = tk.Label(dashboard_frame, text="Health rate: -", anchor="w", font=("Segoe UI", 10, "bold"), bg="#f4f7f9", fg="#176b87")
-last_run_label = tk.Label(dashboard_frame, text="Last run: -", anchor="e", font=("Segoe UI", 10), bg="#f4f7f9", fg="#52606d")
-clock_label = tk.Label(dashboard_frame, text="Current time: -", anchor="e", font=("Segoe UI", 10, "italic"), bg="#f4f7f9", fg="#52606d")
+total_label = tk.Label(dashboard_frame, text="Total checked: 0", anchor="w", font=(UI_FONT_FAMILY, 11, "bold"), bg="#e7eef2", fg="#12343b", padx=10, pady=10)
+healthy_label = tk.Label(dashboard_frame, text="Healthy: 0", fg="#087f5b", anchor="w", font=(UI_FONT_FAMILY, 11, "bold"), bg="#e3f4ed", padx=10, pady=10)
+warning_label = tk.Label(dashboard_frame, text="Warnings: 0", fg="#b54708", anchor="w", font=(UI_FONT_FAMILY, 11, "bold"), bg="#fff0d9", padx=10, pady=10)
+error_label = tk.Label(dashboard_frame, text="Errors: 0", fg="#c92a2a", anchor="w", font=(UI_FONT_FAMILY, 11, "bold"), bg="#fde8e7", padx=10, pady=10)
+elapsed_label = tk.Label(dashboard_frame, text="Elapsed: 0.0s", anchor="w", font=(UI_FONT_FAMILY, 10), bg="#f4f7f9", fg="#52606d")
+last_checked_label = tk.Label(dashboard_frame, text="Last checked: -", anchor="w", font=(UI_FONT_FAMILY, 10), bg="#f4f7f9", fg="#52606d")
+health_rate_label = tk.Label(dashboard_frame, text="Health rate: -", anchor="w", font=(UI_FONT_FAMILY, 10, "bold"), bg="#f4f7f9", fg="#176b87")
+last_run_label = tk.Label(dashboard_frame, text="Last run: -", anchor="e", font=(UI_FONT_FAMILY, 10), bg="#f4f7f9", fg="#52606d")
+clock_label = tk.Label(dashboard_frame, text="Current time: -", anchor="e", font=(UI_FONT_FAMILY, 10, "italic"), bg="#f4f7f9", fg="#52606d")
 
 total_label.grid(row=0, column=0, sticky="w", padx=6, pady=3)
 healthy_label.grid(row=0, column=1, sticky="w", padx=6, pady=3)
@@ -1079,12 +1107,12 @@ clock_label.grid(row=2, column=0, columnspan=4, sticky="e", padx=6, pady=(0, 2))
 # Output box
 results_header = tk.Frame(root, bg="#f4f7f9")
 results_header.pack(padx=18, pady=(8, 0), fill=tk.X)
-tk.Label(results_header, text="Check results", font=("Segoe UI", 12, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
+tk.Label(results_header, text="Check results", font=(UI_FONT_FAMILY, 12, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
 export_button = tk.Button(results_header, text="Export Report", command=export_results, font=button_font, fg="#176b87")
 export_button.pack(side=tk.RIGHT, padx=(6, 0))
 style_action_button(export_button, "primary")
 
-output_box = scrolledtext.ScrolledText(root, width=104, height=20, bd=1, relief=tk.SUNKEN, font=("Consolas", 10), bg="#fbfcfd", fg="#172b4d", padx=8, pady=6)
+output_box = scrolledtext.ScrolledText(root, width=104, height=20, bd=1, relief=tk.SUNKEN, font=(MONO_FONT_FAMILY, 10), bg="#fbfcfd", fg="#172b4d", padx=8, pady=6)
 output_box.pack(padx=18, pady=(6, 14), fill=tk.BOTH, expand=True)
 output_box.tag_config("success", foreground="#008000")
 output_box.tag_config("warning", foreground="#d2691e")
@@ -1140,7 +1168,7 @@ def open_file_viewer():
     win = tk.Toplevel(root)
     win.title(f"Contents: {os.path.basename(path)}")
     win.geometry("700x500")
-    txt = scrolledtext.ScrolledText(win, width=100, height=30, font=("Consolas", 10))
+    txt = scrolledtext.ScrolledText(win, width=100, height=30, font=(MONO_FONT_FAMILY, 10))
     txt.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
     txt.insert(1.0, content)
     txt.config(state=tk.DISABLED)

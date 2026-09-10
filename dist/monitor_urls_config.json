@@ -1,5 +1,7 @@
 {
   "default_file": "D:/urls - ARM Project.txt",
   "slack_webhook_url": "",
-  "slack_enabled": true
+  "slack_enabled": true,
+  "window_geometry": "900x650+140+21",
+  "window_state": "zoomed"
 }

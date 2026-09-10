@@ -32,7 +32,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['url_monitor.icns'],
+    icon=['url_monitor.ico'],
 )
 coll = COLLECT(
     exe,
@@ -42,10 +42,4 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name='check_urls_app_v121',
-)
-app = BUNDLE(
-    coll,
-    name='check_urls_app_v121.app',
-    icon='url_monitor.icns',
-    bundle_identifier=None,
 )

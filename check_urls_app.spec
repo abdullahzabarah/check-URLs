@@ -5,7 +5,7 @@ a = Analysis(
     ['check_urls_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('urls.txt', '.'), ('url_monitor_logo.svg', '.')],
+    datas=[('urls.txt', '.'), ('url_monitor_logo.svg', '.'), ('url_monitor.ico', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

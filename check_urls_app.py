@@ -5,6 +5,10 @@ import sys
 import requests
 import time
 import json
+import threading
+import ctypes
+from ctypes import wintypes
+from urllib.parse import urlsplit
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import scrolledtext, filedialog, ttk, simpledialog, messagebox
@@ -52,17 +56,32 @@ LOGO_FILE = os.path.join(resource_path, "url_monitor_logo.svg")
 
 # Slack enabled flag (persisted)
 SLACK_ENABLED = True
+INTERVAL_CHECK_ENABLED = False
+INTERVAL_MINUTES = 5
+INTERVAL_UNIT = "Minutes"
 
 specific_check_button = None
 progress_var = None
 progress_label = None
 stop_button = None
+run_status_label = None
+interval_status_label = None
+slack_status_label = None
 stop_requested = False
+interval_job = None
+interval_countdown_job = None
+interval_due_at = None
 last_run_summary = "No checks run yet"
 history_records = []
 root = None
 window_geometry = "1040x760"
 window_state = "normal"
+status_animation_id = None
+tray_icon = None
+tray_thread = None
+tray_thread_id = None
+tray_ready = threading.Event()
+app_exiting = False
 
 
 def save_config():
@@ -90,11 +109,43 @@ def save_config():
                 "default_file": default_file,
                 "slack_webhook_url": SLACK_WEBHOOK_URL,
                 "slack_enabled": SLACK_ENABLED,
+                "interval_check_enabled": INTERVAL_CHECK_ENABLED,
+                "interval_minutes": INTERVAL_MINUTES,
+                "interval_unit": INTERVAL_UNIT,
                 "window_geometry": current_geometry,
                 "window_state": current_state,
             }, f, indent=2)
     except Exception:
         pass
+
+
+def set_run_status(text, fg="#52606d"):
+    global status_animation_id
+    if status_animation_id is not None and root is not None:
+        try:
+            root.after_cancel(status_animation_id)
+        except tk.TclError:
+            pass
+        status_animation_id = None
+
+    if run_status_label is None:
+        return
+
+    display_text = f"Run status: {text}"
+    run_status_label.config(text="", fg=fg)
+
+    def reveal(index=0):
+        global status_animation_id
+        if not run_status_label.winfo_exists():
+            status_animation_id = None
+            return
+        run_status_label.config(text=display_text[:index], fg=fg)
+        if index < len(display_text):
+            status_animation_id = root.after(28, lambda: reveal(index + 1))
+        else:
+            status_animation_id = None
+
+    reveal()
 
 
 def resolve_file_path(path):
@@ -135,6 +186,7 @@ def read_url_file(path):
 
 def load_config():
     global current_file, SLACK_WEBHOOK_URL, window_geometry, window_state
+    global INTERVAL_CHECK_ENABLED, INTERVAL_MINUTES, INTERVAL_UNIT
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r") as f:
@@ -143,6 +195,14 @@ def load_config():
             SLACK_WEBHOOK_URL = cfg.get("slack_webhook_url", SLACK_WEBHOOK_URL)
             global SLACK_ENABLED
             SLACK_ENABLED = cfg.get("slack_enabled", SLACK_ENABLED)
+            INTERVAL_CHECK_ENABLED = bool(cfg.get("interval_check_enabled", INTERVAL_CHECK_ENABLED))
+            try:
+                INTERVAL_MINUTES = max(1, int(cfg.get("interval_minutes", INTERVAL_MINUTES)))
+            except (TypeError, ValueError):
+                INTERVAL_MINUTES = 5
+            INTERVAL_UNIT = cfg.get("interval_unit", INTERVAL_UNIT)
+            if INTERVAL_UNIT not in ("Seconds", "Minutes", "Hours"):
+                INTERVAL_UNIT = "Minutes"
             window_geometry = cfg.get("window_geometry", window_geometry)
             window_state = cfg.get("window_state", window_state)
         except Exception:
@@ -190,16 +250,27 @@ def record_history(source, total, healthy, warning, error, elapsed, checked_at, 
 # =====================
 # LOG FUNCTION WITH COLORS
 # =====================
+def update_output_box(edit):
+    output_box.config(state=tk.NORMAL)
+    try:
+        edit()
+    finally:
+        output_box.config(state=tk.DISABLED)
+
+
 def log(message, tag="normal"):
-    output_box.insert(tk.END, message + "\n", (tag,))
+    update_output_box(lambda: output_box.insert(tk.END, message + "\n", (tag,)))
     output_box.see(tk.END)
     root.update()
 
 
 def log_clickable(prefix, url, suffix, tag="normal"):
-    output_box.insert(tk.END, prefix, (tag,))
-    output_box.insert(tk.END, url, ("clickable", tag))
-    output_box.insert(tk.END, suffix + "\n", (tag,))
+    def add_result():
+        output_box.insert(tk.END, prefix, (tag,))
+        output_box.insert(tk.END, url, ("clickable", tag))
+        output_box.insert(tk.END, suffix + "\n", (tag,))
+
+    update_output_box(add_result)
     output_box.see(tk.END)
     root.update()
 
@@ -472,6 +543,23 @@ def is_valid_url(url):
     return bool(pattern.match(url.strip()))
 
 
+def is_valid_slack_webhook_url(url):
+    """Return whether a value matches Slack's HTTPS incoming webhook format."""
+    if not isinstance(url, str):
+        return False
+    parsed = urlsplit(url.strip())
+    path_parts = parsed.path.strip("/").split("/")
+    return (
+        parsed.scheme == "https"
+        and parsed.netloc.lower() == "hooks.slack.com"
+        and len(path_parts) == 4
+        and path_parts[0] == "services"
+        and all(re.fullmatch(r"[A-Za-z0-9_-]+", part) for part in path_parts[1:])
+        and not parsed.query
+        and not parsed.fragment
+    )
+
+
 def validate_specific_url(*args):
     value = specific_url_var.get().strip()
     if value and is_valid_url(value) and not stop_requested:
@@ -534,7 +622,7 @@ def send_slack_alert(message):
     if not SLACK_ENABLED:
         log("ℹ️ Slack alerts disabled; skipping Slack notification.", "info")
         return
-    if not SLACK_WEBHOOK_URL or SLACK_WEBHOOK_URL == "SLACK_WEBHOOK_URL":
+    if not is_valid_slack_webhook_url(SLACK_WEBHOOK_URL):
         log("ℹ️ Slack webhook is not configured; skipping notification.", "info")
         return
 
@@ -607,7 +695,7 @@ def hide_stop_button():
 
 def check_urls(urls, source="URL list"):
     global stop_requested
-    output_box.delete(1.0, tk.END)
+    update_output_box(lambda: output_box.delete(1.0, tk.END))
     reset_dashboard()
 
     if not urls:
@@ -615,7 +703,7 @@ def check_urls(urls, source="URL list"):
 
     stop_requested = False
     show_stop_button()
-    run_status_label.config(text=f"Checking {len(urls)} targets...", fg="#176b87")
+    set_run_status(f"Checking {len(urls)} targets...", "#176b87")
 
     start_time = time.strftime('%Y-%m-%d %H:%M:%S')
     log(f"🔍 Checking URLs...\nStart: {start_time}\n", "info")
@@ -686,10 +774,10 @@ def check_urls(urls, source="URL list"):
             send_slack_alert(f"💚 OK | All URLs healthy at *{end_time}*")
 
         log("✓ Done.", "success")
-        run_status_label.config(text="Check complete", fg="#087f5b")
+        set_run_status("Check complete", "#087f5b")
     else:
         log("✓ Stopped.", "warning")
-        run_status_label.config(text="Check stopped", fg="#b54708")
+        set_run_status("Check stopped", "#b54708")
 
     last_run_label.config(text=f"Last run: {end_time}")
     record_history(
@@ -711,6 +799,66 @@ def check_file_urls():
     check_urls(urls, source=os.path.basename(current_file))
 
 
+def schedule_interval_check():
+    global interval_job, interval_countdown_job, interval_due_at
+    if interval_job is not None and root is not None:
+        try:
+            root.after_cancel(interval_job)
+        except tk.TclError:
+            pass
+        interval_job = None
+    if interval_countdown_job is not None and root is not None:
+        try:
+            root.after_cancel(interval_countdown_job)
+        except tk.TclError:
+            pass
+        interval_countdown_job = None
+    interval_due_at = None
+
+    if INTERVAL_CHECK_ENABLED and root is not None:
+        multipliers = {"Seconds": 1000, "Minutes": 60 * 1000, "Hours": 60 * 60 * 1000}
+        delay_ms = INTERVAL_MINUTES * multipliers[INTERVAL_UNIT]
+        interval_due_at = time.monotonic() + (delay_ms / 1000)
+        interval_job = root.after(delay_ms, run_interval_check)
+    update_interval_status()
+
+
+def update_interval_status():
+    global interval_countdown_job
+    if interval_status_label is None:
+        return
+    if INTERVAL_CHECK_ENABLED:
+        remaining = max(0, round((interval_due_at - time.monotonic()) if interval_due_at else 0))
+        minutes, seconds = divmod(remaining, 60)
+        interval_status_label.config(
+            text=f"Auto-check: ON ({INTERVAL_MINUTES} {INTERVAL_UNIT}) - next in {minutes}:{seconds:02d}",
+            fg="#087f5b",
+        )
+        if root is not None and interval_due_at and remaining > 0:
+            interval_countdown_job = root.after(1000, update_interval_status)
+    else:
+        interval_status_label.config(text="Auto-check: Off", fg="#52606d")
+
+
+def update_slack_status():
+    if slack_status_label is None:
+        return
+    if SLACK_ENABLED:
+        slack_status_label.config(text="Slack: ON", fg="#087f5b")
+    else:
+        slack_status_label.config(text="Slack: Off", fg="#52606d")
+
+
+def run_interval_check():
+    global interval_job
+    interval_job = None
+    if not INTERVAL_CHECK_ENABLED:
+        return
+    set_run_status("Scheduled check starting...", "#176b87")
+    check_file_urls()
+    schedule_interval_check()
+
+
 def check_specific_url():
     urls = get_urls_to_check(use_file=False)
     check_urls(urls, source="Specific URL")
@@ -721,10 +869,11 @@ def clear_specific_url():
     validate_specific_url()
 
 def clear_results():
-    output_box.delete(1.0, tk.END)
+    update_output_box(lambda: output_box.delete(1.0, tk.END))
     reset_dashboard()
-    run_status_label.config(text="Ready for a new check", fg="#52606d")
+    set_run_status("Ready for a new check", "#52606d")
     last_run_label.config(text="Last run: -")
+    update_clear_results_state()
     try:
         clear_results_btn.config(state=tk.DISABLED)
     except Exception:
@@ -765,9 +914,25 @@ def export_results():
     try:
         with open(path, "w", encoding="utf-8") as file_handle:
             file_handle.write(content + "\n")
-        run_status_label.config(text=f"Report exported: {os.path.basename(path)}", fg="#176b87")
+        set_run_status(f"Report exported: {os.path.basename(path)}", "#176b87")
     except OSError as error:
         messagebox.showerror("Export failed", f"Could not save report:\n{error}")
+
+
+def copy_results():
+    content = output_box.get(1.0, tk.END).strip()
+    if not content:
+        messagebox.showinfo("Copy results", "Run a check before copying results.")
+        return
+
+    try:
+        root.clipboard_clear()
+        root.clipboard_append(content)
+        root.update()
+        set_run_status("Results copied to clipboard", "#087f5b")
+        root.after(1800, lambda: set_run_status("Ready", "#52606d") if root.winfo_exists() else None)
+    except tk.TclError:
+        messagebox.showerror("Copy results", "Could not copy results to the clipboard.")
 
 
 def show_history():
@@ -847,7 +1012,14 @@ def configure_slack():
     global SLACK_WEBHOOK_URL
     url = simpledialog.askstring("Slack Webhook", "Enter Slack webhook URL:", initialvalue=SLACK_WEBHOOK_URL)
     if url:
-        SLACK_WEBHOOK_URL = url.strip()
+        url = url.strip()
+        if not is_valid_slack_webhook_url(url):
+            messagebox.showerror(
+                "Slack Settings",
+                "Enter a valid HTTPS Slack webhook URL from hooks.slack.com/services/.",
+            )
+            return
+        SLACK_WEBHOOK_URL = url
         save_config()
         messagebox.showinfo("Slack Settings", "Slack webhook saved successfully.")
 
@@ -959,8 +1131,149 @@ if window_state in ("normal", "zoomed", "iconic"):
         pass
 
 
+def start_tray_icon():
+    global tray_icon, tray_thread, tray_thread_id
+    if tray_icon is not None:
+        return
+    tray_ready.clear()
+    tray_thread = threading.Thread(target=run_native_tray, daemon=True)
+    tray_thread.start()
+    tray_ready.wait(2)
+
+
+def run_native_tray():
+    global tray_icon, tray_thread_id
+    user32 = ctypes.windll.user32
+    shell32 = ctypes.windll.shell32
+    tray_thread_id = ctypes.windll.kernel32.GetCurrentThreadId()
+    WM_TRAY = 0x8001
+    WM_COMMAND = 0x0111
+    WM_RBUTTONUP = 0x0205
+    WM_LBUTTONDBLCLK = 0x0203
+    WM_DESTROY = 0x0002
+    WM_QUIT = 0x0012
+    WM_APP_SHOW = 1001
+    WM_APP_EXIT = 1002
+    NIM_ADD = 0
+    NIM_DELETE = 2
+    NIF_MESSAGE = 1
+    NIF_ICON = 2
+    NIF_TIP = 4
+    IMAGE_ICON = 1
+    LR_LOADFROMFILE = 0x10
+    LR_DEFAULTSIZE = 0x40
+    HWND_MESSAGE = -3
+    TPM_RIGHTBUTTON = 0x0002
+    MF_STRING = 0x0000
+
+    class Point(ctypes.Structure):
+        _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+    class NotifyIconData(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD), ("hWnd", wintypes.HWND), ("uID", wintypes.UINT),
+            ("uFlags", wintypes.UINT), ("uCallbackMessage", wintypes.UINT),
+            ("hIcon", wintypes.HICON), ("szTip", wintypes.WCHAR * 128),
+            ("dwState", wintypes.DWORD), ("dwStateMask", wintypes.DWORD),
+            ("szInfo", wintypes.WCHAR * 256), ("uTimeout", wintypes.UINT),
+            ("szInfoTitle", wintypes.WCHAR * 64), ("dwInfoFlags", wintypes.DWORD),
+            ("guidItem", ctypes.c_byte * 16), ("hBalloonIcon", wintypes.HICON),
+        ]
+
+    class WindowClass(ctypes.Structure):
+        _fields_ = [
+            ("style", wintypes.UINT), ("lpfnWndProc", ctypes.c_void_p),
+            ("cbClsExtra", ctypes.c_int), ("cbWndExtra", ctypes.c_int),
+            ("hInstance", wintypes.HINSTANCE), ("hIcon", wintypes.HICON),
+            ("hCursor", wintypes.HANDLE), ("hbrBackground", wintypes.HANDLE),
+            ("lpszMenuName", wintypes.LPCWSTR), ("lpszClassName", wintypes.LPCWSTR),
+        ]
+
+    class Message(ctypes.Structure):
+        _fields_ = [
+            ("hwnd", wintypes.HWND), ("message", wintypes.UINT),
+            ("wParam", wintypes.WPARAM), ("lParam", wintypes.LPARAM),
+            ("time", wintypes.DWORD), ("pt", Point), ("lPrivate", wintypes.DWORD),
+        ]
+
+    @ctypes.WINFUNCTYPE(ctypes.c_longlong, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+    def window_proc(hwnd, message, wparam, lparam):
+        if message == WM_TRAY:
+            if lparam in (WM_LBUTTONDBLCLK,):
+                root.after(0, restore_from_tray)
+            elif lparam == WM_RBUTTONUP:
+                menu = user32.CreatePopupMenu()
+                user32.AppendMenuW(menu, MF_STRING, WM_APP_SHOW, "Show URL Monitor")
+                user32.AppendMenuW(menu, MF_STRING, WM_APP_EXIT, "Exit")
+                point = Point()
+                user32.GetCursorPos(ctypes.byref(point))
+                user32.SetForegroundWindow(hwnd)
+                user32.TrackPopupMenu(menu, TPM_RIGHTBUTTON, point.x, point.y, 0, hwnd, None)
+                user32.DestroyMenu(menu)
+        elif message == WM_COMMAND:
+            command = wparam & 0xFFFF
+            if command == WM_APP_SHOW:
+                root.after(0, restore_from_tray)
+            elif command == WM_APP_EXIT:
+                root.after(0, close_app)
+        elif message == WM_DESTROY:
+            user32.PostQuitMessage(0)
+        return user32.DefWindowProcW(hwnd, message, wparam, lparam)
+
+    instance = ctypes.windll.kernel32.GetModuleHandleW(None)
+    class_name = f"URLMonitorTray_{os.getpid()}"
+    window_class = WindowClass(0, ctypes.cast(window_proc, ctypes.c_void_p), 0, 0, instance, None, None, None, None, class_name)
+    user32.RegisterClassW(ctypes.byref(window_class))
+    hwnd = user32.CreateWindowExW(0, class_name, "URL Monitor", 0, 0, 0, 0, 0, HWND_MESSAGE, None, instance, None)
+    hicon = user32.LoadImageW(None, ICON_FILE, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE)
+    if not hicon:
+        tray_ready.set()
+        user32.DestroyWindow(hwnd)
+        return
+    notify_data = NotifyIconData()
+    notify_data.cbSize = ctypes.sizeof(NotifyIconData)
+    notify_data.hWnd = hwnd
+    notify_data.uID = 1
+    notify_data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP
+    notify_data.uCallbackMessage = WM_TRAY
+    notify_data.hIcon = hicon
+    notify_data.szTip = "URL Monitor"
+    shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(notify_data))
+    tray_icon = hwnd
+    tray_ready.set()
+    message = Message()
+    while user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:
+        user32.TranslateMessage(ctypes.byref(message))
+        user32.DispatchMessageW(ctypes.byref(message))
+    shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(notify_data))
+    if hicon:
+        user32.DestroyIcon(hicon)
+    tray_icon = None
+    tray_thread_id = None
+
+
+def restore_from_tray():
+    if root.state() == "withdrawn":
+        root.deiconify()
+    root.state("normal")
+    root.lift()
+    root.focus_force()
+
+
+def minimize_to_tray(event=None):
+    if sys.platform == "win32" and not app_exiting and root.state() == "iconic":
+        root.withdraw()
+        start_tray_icon()
+
+
 def close_app():
+    global app_exiting, tray_icon, tray_thread_id
+    app_exiting = True
     save_config()
+    if tray_icon is not None:
+        if tray_thread_id is not None:
+            ctypes.windll.user32.PostThreadMessageW(tray_thread_id, 0x0012, 0, 0)
+        tray_icon = None
     root.destroy()
 
 
@@ -974,6 +1287,8 @@ ENTRY_FG = "#12343b"
 TEXT_BG = "#fbfcfd"
 TEXT_FG = "#172b4d"
 
+if sys.platform == "win32":
+    root.bind("<Unmap>", lambda event: root.after_idle(minimize_to_tray))
 if sys.platform == "darwin":
     # Keep baseline colors explicit on macOS where Tk can inherit low-contrast defaults.
     root.option_add("*Label.Background", BG_COLOR)
@@ -1033,24 +1348,53 @@ def open_settings():
             default_file_var.set(path)
 
     def save_and_close():
-        nonlocal default_file_var, slack_var, slack_enabled_var
+        nonlocal default_file_var, slack_var, slack_enabled_var, interval_minutes_var
+        global current_file, SLACK_WEBHOOK_URL, SLACK_ENABLED
+        global INTERVAL_CHECK_ENABLED, INTERVAL_MINUTES, INTERVAL_UNIT
         new_file = default_file_var.get().strip()
         new_slack = slack_var.get().strip()
-        global current_file, SLACK_WEBHOOK_URL
+        if slack_enabled_var.get() and not is_valid_slack_webhook_url(new_slack):
+            messagebox.showerror(
+                "Settings",
+                "Enter a valid HTTPS Slack webhook URL from hooks.slack.com/services/ or disable Slack alerts.",
+                parent=settings_win,
+            )
+            return
+        if interval_enabled_var.get():
+            try:
+                requested_interval = int(interval_minutes_var.get().strip())
+            except ValueError:
+                messagebox.showerror("Settings", "Enter a whole-number check interval or disable automatic checks.", parent=settings_win)
+                return
+            minimum_interval = 10 if interval_unit_var.get() == "Seconds" else 1
+            if requested_interval < minimum_interval:
+                messagebox.showerror(
+                    "Settings",
+                    f"The minimum interval is {minimum_interval} {interval_unit_var.get().lower()}.",
+                    parent=settings_win,
+                )
+                return
+            new_interval_minutes = requested_interval
+        else:
+            new_interval_minutes = INTERVAL_MINUTES
         if new_file:
             if not os.path.isabs(new_file):
                 new_file = os.path.normpath(os.path.join(base_path, new_file))
             current_file = new_file
         SLACK_WEBHOOK_URL = new_slack
-        global SLACK_ENABLED
         SLACK_ENABLED = bool(slack_enabled_var.get())
+        INTERVAL_CHECK_ENABLED = bool(interval_enabled_var.get())
+        INTERVAL_MINUTES = new_interval_minutes
+        INTERVAL_UNIT = interval_unit_var.get()
         file_label.config(text=f"Using file: {current_file}")
         save_config()
+        schedule_interval_check()
+        update_slack_status()
         settings_win.destroy()
 
     settings_win = tk.Toplevel(root)
     settings_win.title("Settings")
-    settings_win.geometry("640x220")
+    settings_win.geometry("700x360")
     settings_win.transient(root)
     settings_win.resizable(True, False)
     settings_win.columnconfigure(1, weight=1)
@@ -1067,6 +1411,16 @@ def open_settings():
     default_file_var = tk.StringVar(value=display_default_file)
     slack_var = tk.StringVar(value=SLACK_WEBHOOK_URL)
     slack_enabled_var = tk.BooleanVar(value=SLACK_ENABLED)
+    interval_enabled_var = tk.BooleanVar(value=INTERVAL_CHECK_ENABLED)
+    interval_minutes_var = tk.StringVar(value=str(INTERVAL_MINUTES))
+    interval_unit_var = tk.StringVar(value=INTERVAL_UNIT)
+
+    def update_interval_input_state(*args):
+        interval_entry.config(state=tk.NORMAL if interval_enabled_var.get() else tk.DISABLED)
+        interval_unit_combo.config(state="readonly" if interval_enabled_var.get() else tk.DISABLED)
+
+    def update_slack_input_state(*args):
+        slack_entry.config(state=tk.NORMAL if slack_enabled_var.get() else tk.DISABLED)
 
     tk.Label(settings_win, text="Default URL file:", font=label_font, bg=BG_COLOR, fg=FG_COLOR).grid(row=0, column=0, sticky="w", padx=10, pady=8)
     tk.Entry(settings_win, textvariable=default_file_var, font=text_font, bg=ENTRY_BG, fg=ENTRY_FG).grid(row=0, column=1, padx=6, pady=8, sticky="ew")
@@ -1074,14 +1428,27 @@ def open_settings():
     browse_button.grid(row=0, column=2, padx=6, pady=8)
     style_action_button(browse_button)
 
-    tk.Label(settings_win, text="Slack Webhook URL:", font=label_font, bg=BG_COLOR, fg=FG_COLOR).grid(row=1, column=0, sticky="w", padx=10, pady=8)
-    tk.Entry(settings_win, textvariable=slack_var, font=text_font, bg=ENTRY_BG, fg=ENTRY_FG).grid(row=1, column=1, columnspan=2, padx=6, pady=8, sticky="ew")
+    tk.Checkbutton(settings_win, text="Enable Slack alerts", variable=slack_enabled_var, command=update_slack_input_state).grid(row=1, column=0, columnspan=3, sticky="w", padx=10, pady=8)
 
-    tk.Checkbutton(settings_win, text="Enable Slack alerts", variable=slack_enabled_var, bg=BG_COLOR, fg=FG_COLOR).grid(row=2, column=0, columnspan=3, sticky="w", padx=10, pady=8)
+    tk.Label(settings_win, text="Slack Webhook URL:", font=label_font).grid(row=2, column=0, sticky="w", padx=10, pady=8)
+    slack_entry = tk.Entry(settings_win, textvariable=slack_var, font=text_font)
+    slack_entry.grid(row=2, column=1, columnspan=2, padx=6, pady=8, sticky="ew")
+    update_slack_input_state()
 
-    btn_frame = tk.Frame(settings_win, bg=BG_COLOR)
-    btn_frame.grid(row=3, column=0, columnspan=3, sticky="e", padx=6, pady=12)
-    save_button = tk.Button(btn_frame, text="Save", command=save_and_close, width=12, bg=BG_COLOR, fg=FG_COLOR)
+    tk.Label(settings_win, text="Automatic check interval", font=(UI_FONT_FAMILY, 11, "bold"), fg="#12343b").grid(row=3, column=0, columnspan=3, sticky="w", padx=10, pady=(14, 4))
+    tk.Checkbutton(settings_win, text="Enable automatic interval checks", variable=interval_enabled_var, command=update_interval_input_state).grid(row=4, column=0, columnspan=2, sticky="w", padx=10, pady=8)
+    tk.Label(settings_win, text="Check every:", font=label_font).grid(row=5, column=0, sticky="w", padx=10, pady=8)
+    interval_controls = tk.Frame(settings_win)
+    interval_controls.grid(row=5, column=1, columnspan=2, sticky="w", padx=6, pady=8)
+    interval_entry = tk.Entry(interval_controls, textvariable=interval_minutes_var, width=8, font=text_font)
+    interval_entry.pack(side=tk.LEFT)
+    interval_unit_combo = ttk.Combobox(interval_controls, textvariable=interval_unit_var, values=("Seconds", "Minutes", "Hours"), state="readonly", width=10, font=text_font)
+    interval_unit_combo.pack(side=tk.LEFT, padx=0)
+    update_interval_input_state()
+
+    btn_frame = tk.Frame(settings_win)
+    btn_frame.grid(row=6, column=0, columnspan=3, sticky="e", padx=6, pady=12)
+    save_button = tk.Button(btn_frame, text="Save", command=save_and_close, width=12)
     save_button.pack(side=tk.RIGHT, padx=(6,0))
     style_action_button(save_button, "primary")
     cancel_button = tk.Button(btn_frame, text="Cancel", command=settings_win.destroy, width=12, bg=BG_COLOR, fg=FG_COLOR)
@@ -1115,11 +1482,14 @@ logo_canvas.create_oval(24, 24, 30, 30, fill="#f4f7f9", outline="", tags="logo_d
 tk.Label(title_frame, text="URL Monitor", font=(UI_FONT_FAMILY, 22, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
 tk.Label(title_frame, text="Visibility for every endpoint", font=(UI_FONT_FAMILY, 10), fg="#52606d", bg="#f4f7f9").pack(side=tk.LEFT, padx=(12, 0), pady=(9, 0))
 
-run_status_label = tk.Label(title_frame, text="Ready for a new check", font=(UI_FONT_FAMILY, 10, "bold"), fg="#52606d", bg="#f4f7f9")
-run_status_label.pack(side=tk.RIGHT, padx=(12, 0), pady=(8, 0))
-history_button = tk.Button(title_frame, text="History", command=show_history, font=button_font, fg="#176b87")
-history_button.pack(side=tk.RIGHT, pady=(8, 0))
-style_action_button(history_button, "primary")
+status_panel = tk.Frame(title_frame, bg="#f4f7f9")
+status_panel.pack(side=tk.RIGHT, padx=(12, 0), pady=(4, 0))
+run_status_label = tk.Label(status_panel, text="Run status: Ready for a new check", width=65, anchor="e", font=(UI_FONT_FAMILY, 10, "bold"), fg="#52606d", bg="#f4f7f9")
+run_status_label.pack(side=tk.TOP, anchor="e")
+interval_status_label = tk.Label(status_panel, text="Auto-check: Off", anchor="e", font=(UI_FONT_FAMILY, 9, "bold"), fg="#52606d", bg="#f4f7f9")
+interval_status_label.pack(side=tk.TOP, anchor="e", pady=(2, 0))
+slack_status_label = tk.Label(status_panel, text="Slack: Off", anchor="e", font=(UI_FONT_FAMILY, 9, "bold"), fg="#52606d", bg="#f4f7f9")
+slack_status_label.pack(side=tk.TOP, anchor="e", pady=(2, 0))
 
 logo_phase = 0
 
@@ -1171,10 +1541,9 @@ check_file_btn.pack(side=tk.LEFT, padx=4)
 style_action_button(check_file_btn, "primary")
 ToolTip(check_file_btn, "Check all URLs in file")
 
-clear_results_btn = tk.Button(file_actions, text="Clear Results", command=clear_results, font=button_font, fg="orange")
-clear_results_btn.pack(side=tk.LEFT, padx=4)
-style_action_button(clear_results_btn, "warning")
-ToolTip(clear_results_btn, "Clear results")
+history_button = tk.Button(file_actions, text="History", command=show_history, font=button_font, fg="#176b87")
+history_button.pack(side=tk.LEFT, padx=4)
+style_action_button(history_button, "primary")
 
 stop_button = tk.Button(file_actions, text="Stop", command=request_stop, font=button_font, fg="red")
 style_action_button(stop_button, "danger")
@@ -1241,12 +1610,20 @@ clock_label.grid(row=2, column=0, columnspan=4, sticky="e", padx=6, pady=(0, 2))
 results_header = tk.Frame(root, bg="#f4f7f9")
 results_header.pack(padx=18, pady=(8, 0), fill=tk.X)
 tk.Label(results_header, text="Check results", font=(UI_FONT_FAMILY, 12, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
+copy_results_button = tk.Button(results_header, text="Copy Results", command=copy_results, font=button_font)
+copy_results_button.pack(side=tk.RIGHT, padx=(6, 0))
+style_action_button(copy_results_button)
+clear_results_btn = tk.Button(results_header, text="Clear Results", command=clear_results, font=button_font, fg="orange")
+clear_results_btn.pack(side=tk.RIGHT, padx=(6, 0))
+style_action_button(clear_results_btn, "warning")
+ToolTip(clear_results_btn, "Clear results")
 export_button = tk.Button(results_header, text="Export Report", command=export_results, font=button_font, fg="#176b87")
 export_button.pack(side=tk.RIGHT, padx=(6, 0))
 style_action_button(export_button, "primary")
 
 output_box = scrolledtext.ScrolledText(root, width=104, height=20, bd=1, relief=tk.SUNKEN, font=(MONO_FONT_FAMILY, 10), bg="#fbfcfd", fg="#172b4d", padx=8, pady=6)
 output_box.pack(padx=18, pady=(6, 14), fill=tk.BOTH, expand=True)
+output_box.config(state=tk.DISABLED)
 output_box.tag_config("success", foreground="#008000")
 output_box.tag_config("warning", foreground="#d2691e")
 output_box.tag_config("error", foreground="#ff0000")
@@ -1257,14 +1634,16 @@ output_box.tag_bind("clickable", "<Button-1>", on_output_click)
 output_box.tag_bind("clickable", "<Enter>", lambda e: output_box.config(cursor="hand2"))
 output_box.tag_bind("clickable", "<Leave>", lambda e: output_box.config(cursor=""))
 
-
 def update_clear_results_state():
     try:
         content = output_box.get(1.0, tk.END).strip()
+        state = tk.NORMAL if content else tk.DISABLED
         if content:
-            clear_results_btn.config(state=tk.NORMAL)
+            clear_results_btn.config(state=state)
         else:
-            clear_results_btn.config(state=tk.DISABLED)
+            clear_results_btn.config(state=state)
+        export_button.config(state=state)
+        copy_results_button.config(state=state)
     except Exception:
         pass
 
@@ -1283,6 +1662,8 @@ output_box.bind('<<Modified>>', _on_output_modified)
 # Initialize clear results button state based on existing content
 update_clear_results_state()
 update_file_insights()
+schedule_interval_check()
+update_slack_status()
 
 
 def open_file_viewer():

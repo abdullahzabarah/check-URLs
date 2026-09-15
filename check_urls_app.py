@@ -1659,8 +1659,11 @@ export_button = tk.Button(results_header, text="Export Report", command=export_r
 export_button.pack(side=tk.RIGHT, padx=(6, 0))
 style_action_button(export_button, "primary")
 
-output_box = scrolledtext.ScrolledText(root, width=104, height=20, bd=1, relief=tk.SUNKEN, font=(MONO_FONT_FAMILY, 10), bg="#fbfcfd", fg="#172b4d", padx=8, pady=6)
-output_box.pack(padx=18, pady=(6, 14), fill=tk.BOTH, expand=True)
+results_area = tk.Frame(root, bg="#f4f7f9")
+results_area.pack(padx=18, pady=(6, 10), fill=tk.BOTH, expand=True)
+
+output_box = scrolledtext.ScrolledText(results_area, width=104, height=20, bd=1, relief=tk.SUNKEN, font=(MONO_FONT_FAMILY, 10), bg="#fbfcfd", fg="#172b4d", padx=8, pady=6)
+output_box.pack(fill=tk.BOTH, expand=True)
 output_box.config(state=tk.DISABLED)
 output_box.tag_config("success", foreground="#008000")
 output_box.tag_config("warning", foreground="#d2691e")
@@ -1672,8 +1675,8 @@ output_box.tag_bind("clickable", "<Button-1>", on_output_click)
 output_box.tag_bind("clickable", "<Enter>", lambda e: output_box.config(cursor="hand2"))
 output_box.tag_bind("clickable", "<Leave>", lambda e: output_box.config(cursor=""))
 
-hint_status_frame = tk.Frame(root, bg="#e7eef2", highlightthickness=1, highlightbackground="#c4d5da")
-hint_status_frame.pack(padx=18, pady=(0, 10), fill=tk.X)
+hint_status_frame = tk.Frame(results_area, bg="#e7eef2", highlightthickness=1, highlightbackground="#c4d5da")
+hint_status_frame.pack(pady=(6, 0), fill=tk.X)
 hover_hint_label = tk.Label(
     hint_status_frame,
     text="Hint: Move over an item to see what it does.",

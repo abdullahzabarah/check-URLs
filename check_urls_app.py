@@ -1507,7 +1507,7 @@ help_menu.add_command(label="Version", command=show_version)
 menu_bar.add_cascade(label="Help", menu=help_menu)
 root.config(menu=menu_bar)
 root_frame = tk.Frame(root, bg="#f4f7f9")
-root_frame.pack(fill=tk.X, padx=18, pady=(14, 0))
+root_frame.pack(fill=tk.X, padx=12, pady=(10, 0))
 
 title_frame = tk.Frame(root_frame, bg="#f4f7f9")
 title_frame.pack(fill=tk.X)
@@ -1544,7 +1544,7 @@ left_frame = tk.Frame(root_frame, bg="#f4f7f9")
 left_frame.pack(side=tk.LEFT, anchor="w")
 
 file_label = tk.Label(left_frame, text=f"Using file: {current_file}", font=(UI_FONT_FAMILY, 12, "bold"), fg="#12343b", bg="#f4f7f9")
-file_label.grid(row=0, column=0, sticky="w", pady=(12, 4))
+file_label.grid(row=0, column=0, sticky="w", pady=(8, 3))
 file_font = tkfont.Font(family=UI_FONT_FAMILY, size=12, weight="bold")
 file_font_underline = tkfont.Font(family=UI_FONT_FAMILY, size=12, weight="bold", underline=1)
 file_label.config(font=file_font)
@@ -1561,26 +1561,26 @@ file_label.bind("<Leave>", _on_file_leave)
 bind_hover_hint(file_label, "Open the current URL list and inspect its contents.")
 
 source_count_label = tk.Label(left_frame, text="0 targets", font=(UI_FONT_FAMILY, 9, "bold"), fg="#176b87", bg="#f4f7f9")
-source_count_label.grid(row=0, column=1, sticky="w", padx=(10, 0), pady=(12, 4))
+source_count_label.grid(row=0, column=1, sticky="w", padx=(6, 0), pady=(8, 3))
 
 file_stats_label = tk.Label(left_frame, text="0 ready  |  0 invalid  |  0 duplicates", font=(UI_FONT_FAMILY, 9), fg="#52606d", bg="#f4f7f9")
 file_stats_label.grid(row=1, column=0, columnspan=2, sticky="w")
 
 file_actions = tk.Frame(left_frame, bg="#f4f7f9")
-file_actions.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 8))
+file_actions.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 6))
 
 choose_file_btn = tk.Button(file_actions, text="Choose File...", command=browse_file, font=button_font)
-choose_file_btn.pack(side=tk.LEFT, padx=4)
+choose_file_btn.pack(side=tk.LEFT, padx=2)
 style_action_button(choose_file_btn)
 ToolTip(choose_file_btn, "Choose URL list file")
 
 check_file_btn = tk.Button(file_actions, text="Check File", command=check_file_urls, font=button_font, fg="green")
-check_file_btn.pack(side=tk.LEFT, padx=4)
+check_file_btn.pack(side=tk.LEFT, padx=2)
 style_action_button(check_file_btn, "primary")
 ToolTip(check_file_btn, "Check all URLs in file")
 
 history_button = tk.Button(file_actions, text="History", command=show_history, font=button_font, fg="#176b87")
-history_button.pack(side=tk.LEFT, padx=4)
+history_button.pack(side=tk.LEFT, padx=2)
 style_action_button(history_button, "primary")
 
 stop_button = tk.Button(file_actions, text="Stop", command=request_stop, font=button_font, fg="red")
@@ -1589,17 +1589,17 @@ ToolTip(stop_button, "Stop the running URL check")
 
 # Specific URL field: move under file actions (new row)
 url_frame = tk.Frame(left_frame, bg="#f4f7f9")
-url_frame.grid(row=3, column=0, columnspan=2, sticky="w", pady=(6,8))
+url_frame.grid(row=3, column=0, columnspan=2, sticky="w", pady=(4,6))
 
 tk.Label(url_frame, text="Specific URL to check:", font=label_font, fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
 url_entry = tk.Entry(url_frame, textvariable=specific_url_var, width=58, font=text_font, bd=1, relief=tk.FLAT)
-url_entry.pack(side=tk.LEFT, padx=6, pady=2, ipady=4)
+url_entry.pack(side=tk.LEFT, padx=4, pady=2, ipady=4)
 specific_check_button = tk.Button(url_frame, text="Check URL", command=check_specific_url, font=button_font, state=tk.DISABLED, fg="green")
-specific_check_button.pack(side=tk.LEFT, padx=4)
+specific_check_button.pack(side=tk.LEFT, padx=2)
 style_action_button(specific_check_button, "primary")
 ToolTip(specific_check_button, "Check this specific URL")
 clear_url_btn = tk.Button(url_frame, text="Clear URL", command=clear_specific_url, font=button_font, state=tk.DISABLED, fg="red")
-clear_url_btn.pack(side=tk.LEFT, padx=4)
+clear_url_btn.pack(side=tk.LEFT, padx=2)
 style_action_button(clear_url_btn, "danger")
 ToolTip(clear_url_btn, "Clear URL input")
 url_entry.bind("<KeyRelease>", validate_specific_url)
@@ -1608,19 +1608,19 @@ validate_specific_url()
 
 # Progress bar row
 progress_frame = tk.Frame(root, bg="#f4f7f9")
-progress_frame.pack(pady=(2, 6), fill=tk.X, padx=18)
+progress_frame.pack(pady=(2, 4), fill=tk.X, padx=12)
 
 progress_bar = ttk.Progressbar(progress_frame, variable=progress_var, maximum=100, style="Monitor.Horizontal.TProgressbar")
-progress_bar.pack(side=tk.LEFT, padx=6, pady=2, fill=tk.X, expand=True)
+progress_bar.pack(side=tk.LEFT, padx=3, pady=2, fill=tk.X, expand=True)
 progress_label = tk.Label(progress_frame, text="Progress: 0 / 0", font=button_font, bg="#f4f7f9", fg="#52606d")
-progress_label.pack(side=tk.LEFT, padx=10)
+progress_label.pack(side=tk.LEFT, padx=5)
 
 # Slack controls moved to Settings dialog
 
 # Dashboard frame
 
 dashboard_frame = tk.Frame(root, bg="#f4f7f9", padx=12, pady=6)
-dashboard_frame.pack(padx=18, pady=(2, 4), fill=tk.X)
+dashboard_frame.pack(padx=12, pady=(2, 3), fill=tk.X)
 for column in range(4):
     dashboard_frame.columnconfigure(column, weight=1)
 
@@ -1646,21 +1646,35 @@ clock_label.grid(row=2, column=0, columnspan=4, sticky="e", padx=6, pady=(0, 2))
 
 # Output box
 results_header = tk.Frame(root, bg="#f4f7f9")
-results_header.pack(padx=18, pady=(8, 0), fill=tk.X)
+results_header.pack(padx=12, pady=(6, 0), fill=tk.X)
 tk.Label(results_header, text="Check results", font=(UI_FONT_FAMILY, 12, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
 copy_results_button = tk.Button(results_header, text="Copy Results", command=copy_results, font=button_font)
-copy_results_button.pack(side=tk.RIGHT, padx=(6, 0))
+copy_results_button.pack(side=tk.RIGHT, padx=(3, 0))
 style_action_button(copy_results_button)
 clear_results_btn = tk.Button(results_header, text="Clear Results", command=clear_results, font=button_font, fg="orange")
-clear_results_btn.pack(side=tk.RIGHT, padx=(6, 0))
+clear_results_btn.pack(side=tk.RIGHT, padx=(3, 0))
 style_action_button(clear_results_btn, "warning")
 ToolTip(clear_results_btn, "Clear results")
 export_button = tk.Button(results_header, text="Export Report", command=export_results, font=button_font, fg="#176b87")
-export_button.pack(side=tk.RIGHT, padx=(6, 0))
+export_button.pack(side=tk.RIGHT, padx=(3, 0))
 style_action_button(export_button, "primary")
 
 results_area = tk.Frame(root, bg="#f4f7f9")
-results_area.pack(padx=18, pady=(6, 10), fill=tk.BOTH, expand=True)
+results_area.pack(padx=12, pady=(4, 4), fill=tk.BOTH, expand=True)
+
+hint_status_frame = tk.Frame(results_area, bg="#fff8d5", highlightthickness=1, highlightbackground="#d9c36c")
+hint_status_frame.pack(fill=tk.X, pady=(0, 4))
+hover_hint_label = tk.Label(
+    hint_status_frame,
+    text="Hover hint status: move over an item to see what it does.",
+    anchor="w",
+    font=(UI_FONT_FAMILY, 9, "bold"),
+    fg="#6d5b00",
+    bg="#fff8d5",
+    padx=8,
+    pady=5,
+)
+hover_hint_label.pack(fill=tk.X)
 
 output_box = scrolledtext.ScrolledText(results_area, width=104, height=20, bd=1, relief=tk.SUNKEN, font=(MONO_FONT_FAMILY, 10), bg="#fbfcfd", fg="#172b4d", padx=8, pady=6)
 output_box.pack(fill=tk.BOTH, expand=True)
@@ -1674,20 +1688,6 @@ output_box.tag_config("clickable", foreground="#0000ee", underline=1)
 output_box.tag_bind("clickable", "<Button-1>", on_output_click)
 output_box.tag_bind("clickable", "<Enter>", lambda e: output_box.config(cursor="hand2"))
 output_box.tag_bind("clickable", "<Leave>", lambda e: output_box.config(cursor=""))
-
-hint_status_frame = tk.Frame(results_area, bg="#e7eef2", highlightthickness=1, highlightbackground="#c4d5da")
-hint_status_frame.pack(pady=(6, 0), fill=tk.X)
-hover_hint_label = tk.Label(
-    hint_status_frame,
-    text="Hint: Move over an item to see what it does.",
-    anchor="w",
-    font=(UI_FONT_FAMILY, 9),
-    fg="#52606d",
-    bg="#e7eef2",
-    padx=10,
-    pady=6,
-)
-hover_hint_label.pack(fill=tk.X)
 
 bind_hover_hint(choose_file_btn, "Choose the text file containing the URLs to monitor.")
 bind_hover_hint(check_file_btn, "Check every valid URL in the selected file.")

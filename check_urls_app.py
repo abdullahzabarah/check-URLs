@@ -67,6 +67,7 @@ stop_button = None
 run_status_label = None
 interval_status_label = None
 slack_status_label = None
+hover_hint_label = None
 stop_requested = False
 interval_job = None
 interval_countdown_job = None
@@ -77,6 +78,7 @@ root = None
 window_geometry = "1040x760"
 window_state = "normal"
 status_animation_id = None
+hover_hint_animation_id = None
 tray_icon = None
 tray_thread = None
 tray_thread_id = None
@@ -146,6 +148,41 @@ def set_run_status(text, fg="#52606d"):
             status_animation_id = None
 
     reveal()
+
+
+def set_hover_hint(text, fg="#52606d"):
+    """Type a short contextual hint into the page status bar."""
+    global hover_hint_animation_id
+    if hover_hint_animation_id is not None and root is not None:
+        try:
+            root.after_cancel(hover_hint_animation_id)
+        except tk.TclError:
+            pass
+        hover_hint_animation_id = None
+
+    if hover_hint_label is None:
+        return
+
+    display_text = f"Hint: {text}"
+    hover_hint_label.config(text="", fg=fg)
+
+    def reveal(index=0):
+        global hover_hint_animation_id
+        if not hover_hint_label.winfo_exists():
+            hover_hint_animation_id = None
+            return
+        hover_hint_label.config(text=display_text[:index], fg=fg)
+        if index < len(display_text):
+            hover_hint_animation_id = root.after(18, lambda: reveal(index + 1))
+        else:
+            hover_hint_animation_id = None
+
+    reveal()
+
+
+def bind_hover_hint(widget, text):
+    widget.bind("<Enter>", lambda event, hint=text: set_hover_hint(hint), add="+")
+    widget.bind("<Leave>", lambda event: set_hover_hint("Move over an item to see what it does."), add="+")
 
 
 def resolve_file_path(path):
@@ -1521,6 +1558,7 @@ def _on_file_leave(e):
 file_label.bind("<Button-1>", lambda e: open_file_viewer())
 file_label.bind("<Enter>", _on_file_enter)
 file_label.bind("<Leave>", _on_file_leave)
+bind_hover_hint(file_label, "Open the current URL list and inspect its contents.")
 
 source_count_label = tk.Label(left_frame, text="0 targets", font=(UI_FONT_FAMILY, 9, "bold"), fg="#176b87", bg="#f4f7f9")
 source_count_label.grid(row=0, column=1, sticky="w", padx=(10, 0), pady=(12, 4))
@@ -1633,6 +1671,35 @@ output_box.tag_config("clickable", foreground="#0000ee", underline=1)
 output_box.tag_bind("clickable", "<Button-1>", on_output_click)
 output_box.tag_bind("clickable", "<Enter>", lambda e: output_box.config(cursor="hand2"))
 output_box.tag_bind("clickable", "<Leave>", lambda e: output_box.config(cursor=""))
+
+hint_status_frame = tk.Frame(root, bg="#e7eef2", highlightthickness=1, highlightbackground="#c4d5da")
+hint_status_frame.pack(padx=18, pady=(0, 10), fill=tk.X)
+hover_hint_label = tk.Label(
+    hint_status_frame,
+    text="Hint: Move over an item to see what it does.",
+    anchor="w",
+    font=(UI_FONT_FAMILY, 9),
+    fg="#52606d",
+    bg="#e7eef2",
+    padx=10,
+    pady=6,
+)
+hover_hint_label.pack(fill=tk.X)
+
+bind_hover_hint(choose_file_btn, "Choose the text file containing the URLs to monitor.")
+bind_hover_hint(check_file_btn, "Check every valid URL in the selected file.")
+bind_hover_hint(history_button, "Review previous URL-check runs and health summaries.")
+bind_hover_hint(stop_button, "Stop the current URL check after the active request finishes.")
+bind_hover_hint(url_entry, "Enter one URL or host name for a focused check.")
+bind_hover_hint(specific_check_button, "Check only the URL entered above.")
+bind_hover_hint(clear_url_btn, "Remove the URL from the focused-check field.")
+bind_hover_hint(progress_frame, "Track how many URLs in the current run have been checked.")
+bind_hover_hint(dashboard_frame, "See the current run totals, health rate, timing, and clock.")
+bind_hover_hint(results_header, "Use these actions to copy, clear, or export the check output.")
+bind_hover_hint(copy_results_button, "Copy the complete check output to the clipboard.")
+bind_hover_hint(clear_results_btn, "Clear the check output and reset the dashboard.")
+bind_hover_hint(export_button, "Save the check output as a timestamped text report.")
+bind_hover_hint(output_box, "Read the live check output; click a URL to load it for a focused check.")
 
 def update_clear_results_state():
     try:

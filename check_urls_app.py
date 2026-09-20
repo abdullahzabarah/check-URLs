@@ -53,6 +53,7 @@ CONFIG_FILE = os.path.join(base_path, "monitor_urls_config.json")
 HISTORY_FILE = os.path.join(base_path, "check_history.json")
 ICON_FILE = os.path.join(resource_path, "url_monitor.ico")
 LOGO_FILE = os.path.join(resource_path, "url_monitor_logo.svg")
+HEADER_ICON_FILE = os.path.join(resource_path, "url_monitor.iconset", "url_monitor_new.png")
 
 # Slack enabled flag (persisted)
 SLACK_ENABLED = True
@@ -71,6 +72,7 @@ stop_requested = False
 interval_job = None
 interval_countdown_job = None
 interval_due_at = None
+interval_timer_canvas = None
 last_run_summary = "No checks run yet"
 history_records = []
 root = None
@@ -302,7 +304,6 @@ class ToolTip:
             return
         self.tipwindow = tw = tk.Toplevel(self.widget)
         tw.wm_overrideredirect(True)
-        tw.wm_geometry(f"+{x}+{y}")
         self.tip_label = tk.Label(
             tw,
             text="",
@@ -316,6 +317,18 @@ class ToolTip:
             font=(UI_FONT_FAMILY, 9),
         )
         self.tip_label.pack(ipadx=4, ipady=2)
+        tw.update_idletasks()
+        tip_width = tw.winfo_reqwidth()
+        tip_height = tw.winfo_reqheight()
+        screen_width = tw.winfo_screenwidth()
+        screen_height = tw.winfo_screenheight()
+        if x + tip_width > screen_width:
+            x -= tip_width + 20
+        if y + tip_height > screen_height:
+            y -= tip_height + 20
+        x = max(0, min(x, screen_width - tip_width))
+        y = max(0, min(y, screen_height - tip_height))
+        tw.wm_geometry(f"+{x}+{y}")
         self._reveal_text()
 
     def _reveal_text(self, index=0):
@@ -341,6 +354,7 @@ class ToolTip:
 
 
 def style_action_button(button, tone="neutral"):
+    button.configure(style="Win11.TButton")
     return button
 
 
@@ -369,9 +383,9 @@ class StatusLabel(tk.Canvas):
         self.delete("all")
         width = int(self["width"])
         height = int(self["height"])
-        self.create_rectangle(0, 0, width, height, fill=self._fill_color, outline="#d7e2e6")
+        self.create_rectangle(0, 0, width, height, fill=self._fill_color, outline=PANEL_BORDER)
         self.create_rectangle(0, 0, 4, height, fill=self._text_color, outline="")
-        self.create_text(self._padx + 3, height // 2, text=self._text, anchor="w", font=self._font, fill="#12343b")
+        self.create_text(self._padx + 3, height // 2, text=self._text, anchor="w", font=self._font, fill=FG_COLOR)
 
     def configure(self, cnf=None, **kwargs):
         if cnf:
@@ -802,21 +816,33 @@ def schedule_interval_check():
     update_interval_status()
 
 
+def update_interval_timer(remaining, total_seconds):
+    if interval_timer_canvas is None:
+        return
+    interval_timer_canvas.itemconfig("timer_arc", extent=-360 * (remaining / total_seconds) if total_seconds else 0)
+    interval_timer_canvas.itemconfig("timer_text", text=f"{max(0, round(remaining))}s" if INTERVAL_CHECK_ENABLED else "--")
+
+
 def update_interval_status():
     global interval_countdown_job
     if interval_status_label is None:
         return
     if INTERVAL_CHECK_ENABLED:
-        remaining = max(0, round((interval_due_at - time.monotonic()) if interval_due_at else 0))
+        total_seconds = INTERVAL_MINUTES * {"Seconds": 1, "Minutes": 60, "Hours": 60 * 60}[INTERVAL_UNIT]
+        remaining = max(0, (interval_due_at - time.monotonic()) if interval_due_at else 0)
         minutes, seconds = divmod(remaining, 60)
+        next_run_label.config(text="Next run: On", fg="#087f5b")
         interval_status_label.config(
-            text=f"Auto-check: ON ({INTERVAL_MINUTES} {INTERVAL_UNIT}) - next in {minutes}:{seconds:02d}",
-            fg="#087f5b",
+            text=f"{int(minutes)}:{int(seconds):02d}",
+            fg=MUTED_COLOR,
         )
+        update_interval_timer(remaining, total_seconds)
         if root is not None and interval_due_at and remaining > 0:
             interval_countdown_job = root.after(1000, update_interval_status)
     else:
-        interval_status_label.config(text="Auto-check: Off", fg="#52606d")
+        next_run_label.config(text="Next run: Off", fg=MUTED_COLOR)
+        interval_status_label.config(text="--:--", fg=MUTED_COLOR)
+        update_interval_timer(0, 1)
 
 
 def update_slack_status():
@@ -825,7 +851,7 @@ def update_slack_status():
     if SLACK_ENABLED:
         slack_status_label.config(text="Slack: ON", fg="#087f5b")
     else:
-        slack_status_label.config(text="Slack: Off", fg="#52606d")
+        slack_status_label.config(text="Slack: Off", fg=MUTED_COLOR)
 
 
 def run_interval_check():
@@ -920,16 +946,16 @@ def show_history():
     history_win.geometry("900x500")
     history_win.minsize(720, 380)
     history_win.transient(root)
-    history_win.configure(bg="#f4f7f9")
+    history_win.configure(bg=BG_COLOR)
     history_win.columnconfigure(0, weight=1)
     history_win.rowconfigure(1, weight=1)
 
-    header = tk.Frame(history_win, bg="#f4f7f9")
+    header = tk.Frame(history_win, bg=BG_COLOR)
     header.grid(row=0, column=0, sticky="ew", padx=18, pady=(16, 8))
-    tk.Label(header, text="Check History", font=(UI_FONT_FAMILY, 18, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
-    tk.Label(header, text="Your last 100 monitoring runs", font=(UI_FONT_FAMILY, 10), fg="#52606d", bg="#f4f7f9").pack(side=tk.LEFT, padx=(12, 0), pady=(6, 0))
+    tk.Label(header, text="Check History", font=(UI_FONT_FAMILY, 18, "bold"), fg=FG_COLOR, bg=BG_COLOR).pack(side=tk.LEFT)
+    tk.Label(header, text="Your last 100 monitoring runs", font=(UI_FONT_FAMILY, 10), fg="#a0a0a0" if IS_DARK_MODE else "#52606d", bg=BG_COLOR).pack(side=tk.LEFT, padx=(12, 0), pady=(6, 0))
 
-    table_frame = tk.Frame(history_win, bg="#f4f7f9")
+    table_frame = tk.Frame(history_win, bg=BG_COLOR)
     table_frame.grid(row=1, column=0, sticky="nsew", padx=18, pady=4)
     table_frame.columnconfigure(0, weight=1)
     table_frame.rowconfigure(0, weight=1)
@@ -964,9 +990,9 @@ def show_history():
             ))
         count_label.config(text=f"{len(history_records)} saved runs")
 
-    footer = tk.Frame(history_win, bg="#f4f7f9")
+    footer = tk.Frame(history_win, bg=BG_COLOR)
     footer.grid(row=2, column=0, sticky="ew", padx=18, pady=(8, 16))
-    count_label = tk.Label(footer, text="0 saved runs", font=(UI_FONT_FAMILY, 9), fg="#52606d", bg="#f4f7f9")
+    count_label = tk.Label(footer, text="0 saved runs", font=(UI_FONT_FAMILY, 9), fg="#a0a0a0" if IS_DARK_MODE else "#52606d", bg=BG_COLOR)
     count_label.pack(side=tk.LEFT)
 
     def purge_history():
@@ -979,10 +1005,10 @@ def show_history():
         save_history()
         refresh_rows()
 
-    purge_button = tk.Button(footer, text="Purge History", command=purge_history, width=12)
+    purge_button = ttk.Button(footer, text="Purge History", command=purge_history, width=12)
     purge_button.pack(side=tk.RIGHT, padx=(6, 0))
     style_action_button(purge_button, "danger")
-    close_button = tk.Button(footer, text="Close", command=history_win.destroy, width=12)
+    close_button = ttk.Button(footer, text="Close", command=history_win.destroy, width=12)
     close_button.pack(side=tk.RIGHT, padx=(6, 0))
     style_action_button(close_button)
     refresh_rows()
@@ -1044,7 +1070,7 @@ def show_about():
     repo_lbl.bind("<Enter>", lambda e: repo_lbl.config(fg="#551A8B"))
     repo_lbl.bind("<Leave>", lambda e: repo_lbl.config(fg="#0000ee"))
 
-    about_close_button = tk.Button(about_win, text="Close", command=about_win.destroy, width=10)
+    about_close_button = ttk.Button(about_win, text="Close", command=about_win.destroy, width=10)
     about_close_button.pack(pady=(8, 12))
     style_action_button(about_close_button)
 
@@ -1081,7 +1107,7 @@ def show_instructions():
     txt.insert(tk.END, text)
     txt.config(state=tk.DISABLED)
 
-    btn = tk.Button(win, text="Close", command=win.destroy, width=10)
+    btn = ttk.Button(win, text="Close", command=win.destroy, width=10)
     btn.grid(row=1, column=0, sticky="e", padx=8, pady=(0,8))
     style_action_button(btn)
 
@@ -1094,11 +1120,55 @@ def show_version():
 # =====================
 load_config()
 load_history()
+
+
+def windows_apps_use_light_theme():
+    if sys.platform != "win32":
+        return True
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        ) as key:
+            for value_name in ("SystemUsesLightTheme", "AppsUseLightTheme"):
+                try:
+                    value, _ = winreg.QueryValueEx(key, value_name)
+                    return int(value) != 0
+                except FileNotFoundError:
+                    continue
+            return True
+    except (OSError, TypeError, ValueError):
+        return True
+
+
+IS_DARK_MODE = not windows_apps_use_light_theme()
+if IS_DARK_MODE:
+    BG_COLOR = "#202020"
+    FG_COLOR = "#f3f3f3"
+    ENTRY_BG = "#2b2b2b"
+    ENTRY_FG = "#f3f3f3"
+    TEXT_BG = "#1f1f1f"
+    TEXT_FG = "#f3f3f3"
+    MUTED_COLOR = "#a0a0a0"
+    PANEL_BORDER = "#444444"
+    CARD_NEUTRAL = "#303030"
+else:
+    BG_COLOR = "#f3f3f3"
+    FG_COLOR = "#1a1a1a"
+    ENTRY_BG = "#ffffff"
+    ENTRY_FG = "#1a1a1a"
+    TEXT_BG = "#ffffff"
+    TEXT_FG = "#1a1a1a"
+    MUTED_COLOR = "#52606d"
+    PANEL_BORDER = "#d7e2e6"
+    CARD_NEUTRAL = "#e7eef2"
+
 root = tk.Tk()
 root.title("URL Monitor")
 root.geometry("1040x760")
 root.minsize(900, 650)
-root.configure(bg="#f4f7f9")
+root.configure(bg=BG_COLOR)
 try:
     root.geometry(window_geometry)
 except tk.TclError:
@@ -1259,14 +1329,6 @@ def close_app():
 
 root.protocol("WM_DELETE_WINDOW", close_app)
 
-# Color palette for consistent macOS compatibility
-BG_COLOR = "#f4f7f9"
-FG_COLOR = "#12343b"
-ENTRY_BG = "#ffffff"
-ENTRY_FG = "#12343b"
-TEXT_BG = "#fbfcfd"
-TEXT_FG = "#172b4d"
-
 if sys.platform == "darwin":
     # Keep baseline colors explicit on macOS where Tk can inherit low-contrast defaults.
     root.option_add("*Label.Background", BG_COLOR)
@@ -1288,9 +1350,11 @@ if sys.platform == "darwin":
         )
     except tk.TclError:
         pass
+app_logo_image = None
 try:
-    if os.path.exists(ICON_FILE):
-        root.iconbitmap(ICON_FILE)
+    if os.path.exists(HEADER_ICON_FILE):
+        app_logo_image = tk.PhotoImage(file=HEADER_ICON_FILE)
+        root.iconphoto(True, app_logo_image)
 except tk.TclError:
     pass
 
@@ -1303,10 +1367,85 @@ progress_var = tk.DoubleVar(value=0.0)
 style = ttk.Style(root)
 if sys.platform != "darwin":
     try:
-        style.theme_use("clam")
+        style.theme_use("clam" if IS_DARK_MODE else "vista")
     except tk.TclError:
-        pass
-style.configure("Monitor.Horizontal.TProgressbar", troughcolor="#dfe8ed", background="#176b87", lightcolor="#176b87", darkcolor="#176b87", borderwidth=0)
+        try:
+            style.theme_use("vista" if IS_DARK_MODE else "clam")
+        except tk.TclError:
+            pass
+style.configure("TEntry", fieldbackground=ENTRY_BG, foreground=ENTRY_FG, padding=4)
+style.configure("TCombobox", fieldbackground=ENTRY_BG, foreground=ENTRY_FG, padding=3)
+style.map("TCombobox", fieldbackground=[("disabled", "#e5e5e5")])
+button_surface = "#2b2b2b" if IS_DARK_MODE else "#ffffff"
+button_hover = "#383838" if IS_DARK_MODE else "#f5f5f5"
+button_pressed = "#444444" if IS_DARK_MODE else "#e5e5e5"
+style.configure("Win11.TButton", background=button_surface, foreground=FG_COLOR, bordercolor=PANEL_BORDER, padding=(12, 6), relief="flat", focusthickness=1, focuscolor="#0078d4")
+style.map(
+    "Win11.TButton",
+    background=[("disabled", "#303030" if IS_DARK_MODE else "#e5e5e5"), ("pressed", button_pressed), ("active", button_hover)],
+    foreground=[("disabled", "#777777" if IS_DARK_MODE else "#8a8a8a")],
+)
+style.configure("TCheckbutton", font=(UI_FONT_FAMILY, 10), padding=3)
+style.configure("Treeview", background=ENTRY_BG, fieldbackground=ENTRY_BG, foreground=FG_COLOR, rowheight=28, borderwidth=0)
+style.configure("Treeview.Heading", background="#e5e5e5", foreground=FG_COLOR, font=(UI_FONT_FAMILY, 9, "bold"), padding=(6, 5))
+style.configure("Monitor.Horizontal.TProgressbar", troughcolor="#e5e5e5", background="#0067c0", lightcolor="#0067c0", darkcolor="#0067c0", borderwidth=0)
+
+
+def refresh_os_theme():
+    global IS_DARK_MODE, BG_COLOR, FG_COLOR, ENTRY_BG, ENTRY_FG, TEXT_BG, TEXT_FG
+    global MUTED_COLOR, PANEL_BORDER, CARD_NEUTRAL
+    current_dark_mode = not windows_apps_use_light_theme()
+    if current_dark_mode != IS_DARK_MODE:
+        old_values = {BG_COLOR, FG_COLOR, ENTRY_BG, ENTRY_FG, TEXT_BG, TEXT_FG, MUTED_COLOR}
+        IS_DARK_MODE = current_dark_mode
+        if IS_DARK_MODE:
+            BG_COLOR, FG_COLOR = "#202020", "#f3f3f3"
+            ENTRY_BG, ENTRY_FG = "#2b2b2b", "#f3f3f3"
+            TEXT_BG, TEXT_FG = "#1f1f1f", "#f3f3f3"
+            MUTED_COLOR, PANEL_BORDER, CARD_NEUTRAL = "#a0a0a0", "#444444", "#303030"
+        else:
+            BG_COLOR, FG_COLOR = "#f3f3f3", "#1a1a1a"
+            ENTRY_BG, ENTRY_FG = "#ffffff", "#1a1a1a"
+            TEXT_BG, TEXT_FG = "#ffffff", "#1a1a1a"
+            MUTED_COLOR, PANEL_BORDER, CARD_NEUTRAL = "#52606d", "#d7e2e6", "#e7eef2"
+
+        try:
+            style.theme_use("clam" if IS_DARK_MODE else "vista")
+        except tk.TclError:
+            pass
+        style.configure("TEntry", fieldbackground=ENTRY_BG, foreground=ENTRY_FG, padding=4)
+        style.configure("TCombobox", fieldbackground=ENTRY_BG, foreground=ENTRY_FG, padding=3)
+        style.configure("Win11.TButton", background="#2b2b2b" if IS_DARK_MODE else "#ffffff", foreground=FG_COLOR, bordercolor=PANEL_BORDER, padding=(12, 6), relief="flat", focusthickness=1, focuscolor="#0078d4")
+        style.configure("Treeview", background=ENTRY_BG, fieldbackground=ENTRY_BG, foreground=FG_COLOR)
+
+        def update_widget(widget):
+            try:
+                if widget.cget("bg") in old_values:
+                    widget.configure(bg=BG_COLOR)
+                if widget.cget("fg") in old_values:
+                    widget.configure(fg=FG_COLOR)
+            except (tk.TclError, AttributeError):
+                pass
+            for child in widget.winfo_children():
+                update_widget(child)
+
+        update_widget(root)
+        root.configure(bg=BG_COLOR)
+        if interval_timer_canvas is not None:
+            interval_timer_canvas.configure(bg=BG_COLOR)
+            interval_timer_canvas.itemconfig("timer_track", outline=PANEL_BORDER)
+            interval_timer_canvas.itemconfig("timer_arc", outline="#4cc2ff" if IS_DARK_MODE else "#0078d4")
+            interval_timer_canvas.itemconfig("timer_text", fill=FG_COLOR)
+        next_run_label.configure(bg=BG_COLOR, fg="#087f5b" if INTERVAL_CHECK_ENABLED else MUTED_COLOR)
+        interval_status_label.configure(bg=BG_COLOR, fg=MUTED_COLOR)
+        slack_status_label.configure(bg=BG_COLOR, fg="#087f5b" if SLACK_ENABLED else MUTED_COLOR)
+        total_label.configure(bg=CARD_NEUTRAL, fg="#4cc2ff" if IS_DARK_MODE else "#176b87")
+        healthy_label.configure(bg="#254634" if IS_DARK_MODE else "#e3f4ed", fg="#58d68d" if IS_DARK_MODE else "#087f5b")
+        warning_label.configure(bg="#4a3b1b" if IS_DARK_MODE else "#fff0d9", fg="#ffc857" if IS_DARK_MODE else "#b54708")
+        error_label.configure(bg="#4a2525" if IS_DARK_MODE else "#fde8e7", fg="#ff7b72" if IS_DARK_MODE else "#c92a2a")
+        update_interval_status()
+        update_slack_status()
+    root.after(1000, refresh_os_theme)
 
 button_font = (UI_FONT_FAMILY, 10)
 label_font = (UI_FONT_FAMILY, 10, "bold")
@@ -1401,24 +1540,24 @@ def open_settings():
         slack_entry.config(state=tk.NORMAL if slack_enabled_var.get() else tk.DISABLED)
 
     tk.Label(settings_win, text="Default URL file:", font=label_font, bg=BG_COLOR, fg=FG_COLOR).grid(row=0, column=0, sticky="w", padx=10, pady=8)
-    tk.Entry(settings_win, textvariable=default_file_var, font=text_font, bg=ENTRY_BG, fg=ENTRY_FG).grid(row=0, column=1, padx=6, pady=8, sticky="ew")
-    browse_button = tk.Button(settings_win, text="Browse...", command=browse_for_file)
+    ttk.Entry(settings_win, textvariable=default_file_var, font=text_font).grid(row=0, column=1, padx=6, pady=8, sticky="ew")
+    browse_button = ttk.Button(settings_win, text="Browse...", command=browse_for_file)
     browse_button.grid(row=0, column=2, padx=6, pady=8)
     style_action_button(browse_button)
 
-    tk.Checkbutton(settings_win, text="Enable Slack alerts", variable=slack_enabled_var, command=update_slack_input_state).grid(row=1, column=0, columnspan=3, sticky="w", padx=10, pady=8)
+    ttk.Checkbutton(settings_win, text="Enable Slack alerts", variable=slack_enabled_var, command=update_slack_input_state).grid(row=1, column=0, columnspan=3, sticky="w", padx=10, pady=8)
 
     tk.Label(settings_win, text="Slack Webhook URL:", font=label_font).grid(row=2, column=0, sticky="w", padx=10, pady=8)
-    slack_entry = tk.Entry(settings_win, textvariable=slack_var, font=text_font)
+    slack_entry = ttk.Entry(settings_win, textvariable=slack_var, font=text_font)
     slack_entry.grid(row=2, column=1, columnspan=2, padx=6, pady=8, sticky="ew")
     update_slack_input_state()
 
     tk.Label(settings_win, text="Automatic check interval", font=(UI_FONT_FAMILY, 11, "bold"), fg="#12343b").grid(row=3, column=0, columnspan=3, sticky="w", padx=10, pady=(14, 4))
-    tk.Checkbutton(settings_win, text="Enable automatic interval checks", variable=interval_enabled_var, command=update_interval_input_state).grid(row=4, column=0, columnspan=2, sticky="w", padx=10, pady=8)
+    ttk.Checkbutton(settings_win, text="Enable automatic interval checks", variable=interval_enabled_var, command=update_interval_input_state).grid(row=4, column=0, columnspan=2, sticky="w", padx=10, pady=8)
     tk.Label(settings_win, text="Check every:", font=label_font).grid(row=5, column=0, sticky="w", padx=10, pady=8)
     interval_controls = tk.Frame(settings_win)
     interval_controls.grid(row=5, column=1, columnspan=2, sticky="w", padx=6, pady=8)
-    interval_entry = tk.Entry(interval_controls, textvariable=interval_minutes_var, width=8, font=text_font)
+    interval_entry = ttk.Entry(interval_controls, textvariable=interval_minutes_var, width=8, font=text_font)
     interval_entry.pack(side=tk.LEFT)
     interval_unit_combo = ttk.Combobox(interval_controls, textvariable=interval_unit_var, values=("Seconds", "Minutes", "Hours"), state="readonly", width=10, font=text_font)
     interval_unit_combo.pack(side=tk.LEFT, padx=0)
@@ -1426,10 +1565,10 @@ def open_settings():
 
     btn_frame = tk.Frame(settings_win)
     btn_frame.grid(row=6, column=0, columnspan=3, sticky="e", padx=6, pady=(12, 0))
-    save_button = tk.Button(btn_frame, text="Save", command=save_and_close, width=12)
+    save_button = ttk.Button(btn_frame, text="Save", command=save_and_close, width=12)
     save_button.pack(side=tk.RIGHT, padx=(6,0))
     style_action_button(save_button, "primary")
-    cancel_button = tk.Button(btn_frame, text="Cancel", command=settings_win.destroy, width=12)
+    cancel_button = ttk.Button(btn_frame, text="Cancel", command=settings_win.destroy, width=12)
     cancel_button.pack(side=tk.RIGHT, padx=(6,0))
     style_action_button(cancel_button)
 
@@ -1447,44 +1586,42 @@ help_menu.add_command(label="About", command=show_about)
 help_menu.add_command(label="Version", command=show_version)
 menu_bar.add_cascade(label="Help", menu=help_menu)
 root.config(menu=menu_bar)
-root_frame = tk.Frame(root, bg="#f4f7f9")
+root_frame = tk.Frame(root, bg=BG_COLOR)
 root_frame.pack(fill=tk.X, padx=12, pady=(10, 0))
 
-title_frame = tk.Frame(root_frame, bg="#f4f7f9")
+title_frame = tk.Frame(root_frame, bg=BG_COLOR)
 title_frame.pack(fill=tk.X)
-logo_canvas = tk.Canvas(title_frame, width=54, height=54, highlightthickness=0, bg="#f4f7f9")
-logo_canvas.pack(side=tk.LEFT, padx=(0, 10))
-logo_canvas.create_oval(7, 7, 47, 47, fill="#176b87", outline="#12343b", width=2, tags="logo_ring")
-logo_canvas.create_arc(14, 14, 40, 40, start=35, extent=230, style=tk.ARC, outline="#f4f7f9", width=4, tags="logo_arc")
-logo_canvas.create_oval(24, 24, 30, 30, fill="#f4f7f9", outline="", tags="logo_dot")
-tk.Label(title_frame, text="URL Monitor", font=(UI_FONT_FAMILY, 22, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
-tk.Label(title_frame, text="Visibility for every endpoint", font=(UI_FONT_FAMILY, 10), fg="#52606d", bg="#f4f7f9").pack(side=tk.LEFT, padx=(12, 0), pady=(9, 0))
+interval_timer_canvas = tk.Canvas(title_frame, width=54, height=54, bg=BG_COLOR, highlightthickness=0)
+interval_timer_canvas.pack(side=tk.LEFT, padx=(0, 10))
+interval_timer_canvas.create_oval(4, 4, 50, 50, outline=PANEL_BORDER, width=2, tags="timer_track")
+interval_timer_canvas.create_arc(4, 4, 50, 50, start=90, extent=0, outline="#0078d4", width=4, style=tk.ARC, tags="timer_arc")
+interval_timer_canvas.create_text(27, 27, text="--", fill=FG_COLOR, font=(UI_FONT_FAMILY, 10, "bold"), tags="timer_text")
+ToolTip(interval_timer_canvas, "Time remaining until the next automatic check.")
+tk.Label(title_frame, text="URL Monitor", font=(UI_FONT_FAMILY, 22, "bold"), fg=FG_COLOR, bg=BG_COLOR).pack(side=tk.LEFT)
+tk.Label(title_frame, text="Visibility for every endpoint", font=(UI_FONT_FAMILY, 10), fg=MUTED_COLOR, bg=BG_COLOR).pack(side=tk.LEFT, padx=(12, 0), pady=(9, 0))
 
-status_panel = tk.Frame(title_frame, bg="#f4f7f9")
+status_panel = tk.Frame(title_frame, bg=BG_COLOR)
 status_panel.pack(side=tk.RIGHT, padx=(12, 0), pady=(4, 0))
-run_status_label = tk.Label(status_panel, text="Run status: Ready for a new check", width=65, anchor="e", font=(UI_FONT_FAMILY, 10, "bold"), fg="#52606d", bg="#f4f7f9")
+run_status_label = tk.Label(status_panel, text="Run status: Ready for a new check", width=65, anchor="e", font=(UI_FONT_FAMILY, 10, "bold"), fg="#a0a0a0" if IS_DARK_MODE else "#52606d", bg=BG_COLOR)
 run_status_label.pack(side=tk.TOP, anchor="e")
-interval_status_label = tk.Label(status_panel, text="Auto-check: Off", anchor="e", font=(UI_FONT_FAMILY, 9, "bold"), fg="#52606d", bg="#f4f7f9")
-interval_status_label.pack(side=tk.TOP, anchor="e", pady=(2, 0))
-slack_status_label = tk.Label(status_panel, text="Slack: Off", anchor="e", font=(UI_FONT_FAMILY, 9, "bold"), fg="#52606d", bg="#f4f7f9")
+interval_status_label = tk.Label(status_panel, text="Auto-check: Off", anchor="e", font=(UI_FONT_FAMILY, 9, "bold"), fg="#a0a0a0" if IS_DARK_MODE else "#52606d", bg=BG_COLOR)
+interval_status_row = tk.Frame(status_panel, bg=BG_COLOR)
+interval_status_row.pack(side=tk.TOP, anchor="e", pady=(2, 0))
+next_run_label = tk.Label(interval_status_row, text="Next run:", anchor="e", font=(UI_FONT_FAMILY, 9), fg=MUTED_COLOR, bg=BG_COLOR)
+next_run_label.pack(side=tk.LEFT, padx=(0, 6))
+interval_status_label.pack(in_=interval_status_row, side=tk.LEFT)
+slack_status_label = tk.Label(status_panel, text="Slack: Off", anchor="e", font=(UI_FONT_FAMILY, 9, "bold"), fg="#a0a0a0" if IS_DARK_MODE else "#52606d", bg=BG_COLOR)
 slack_status_label.pack(side=tk.TOP, anchor="e", pady=(2, 0))
-
-logo_phase = 0
-
-
-def animate_logo():
-    global logo_phase
-    logo_phase = (logo_phase + 1) % 24
-    pulse = 2 if logo_phase < 12 else 0
-    logo_canvas.coords("logo_ring", 7 - pulse, 7 - pulse, 47 + pulse, 47 + pulse)
-    logo_canvas.itemconfig("logo_ring", outline="#2b8aa3" if pulse else "#12343b")
-    root.after(140, animate_logo)
+ToolTip(run_status_label, "Current state of the active URL check.")
+ToolTip(next_run_label, "Whether automatic checking is enabled.")
+ToolTip(interval_status_label, "Remaining time before the next automatic check.")
+ToolTip(slack_status_label, "Whether Slack alerts are enabled.")
 
 # Left: file info + file actions
-left_frame = tk.Frame(root_frame, bg="#f4f7f9")
+left_frame = tk.Frame(root_frame, bg=BG_COLOR)
 left_frame.pack(side=tk.LEFT, anchor="w")
 
-file_label = tk.Label(left_frame, text=f"Using file: {current_file}", font=(UI_FONT_FAMILY, 12, "bold"), fg="#12343b", bg="#f4f7f9")
+file_label = tk.Label(left_frame, text=f"Using file: {current_file}", font=(UI_FONT_FAMILY, 12, "bold"), fg=FG_COLOR, bg=BG_COLOR)
 file_label.grid(row=0, column=0, sticky="w", pady=(8, 3))
 file_font = tkfont.Font(family=UI_FONT_FAMILY, size=12, weight="bold")
 file_font_underline = tkfont.Font(family=UI_FONT_FAMILY, size=12, weight="bold", underline=1)
@@ -1501,41 +1638,41 @@ file_label.bind("<Enter>", _on_file_enter)
 file_label.bind("<Leave>", _on_file_leave)
 bind_hover_hint(file_label, "Open the current URL list and inspect its contents.")
 
-source_count_label = tk.Label(left_frame, text="0 targets", font=(UI_FONT_FAMILY, 9, "bold"), fg="#176b87", bg="#f4f7f9")
+source_count_label = tk.Label(left_frame, text="0 targets", font=(UI_FONT_FAMILY, 9, "bold"), fg="#4cc2ff" if IS_DARK_MODE else "#176b87", bg=BG_COLOR)
 source_count_label.grid(row=0, column=1, sticky="w", padx=(6, 0), pady=(8, 3))
 
-file_stats_label = tk.Label(left_frame, text="0 ready  |  0 invalid  |  0 duplicates", font=(UI_FONT_FAMILY, 9), fg="#52606d", bg="#f4f7f9")
+file_stats_label = tk.Label(left_frame, text="0 ready  |  0 invalid  |  0 duplicates", font=(UI_FONT_FAMILY, 9), fg="#a0a0a0" if IS_DARK_MODE else "#52606d", bg=BG_COLOR)
 file_stats_label.grid(row=1, column=0, columnspan=2, sticky="w")
 
-file_actions = tk.Frame(left_frame, bg="#f4f7f9")
+file_actions = tk.Frame(left_frame, bg=BG_COLOR)
 file_actions.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 6))
 
-choose_file_btn = tk.Button(file_actions, text="Choose File...", command=browse_file)
+choose_file_btn = ttk.Button(file_actions, text="Choose File...", command=browse_file)
 choose_file_btn.pack(side=tk.LEFT, padx=2)
 style_action_button(choose_file_btn)
 
-check_file_btn = tk.Button(file_actions, text="Check File", command=check_file_urls)
+check_file_btn = ttk.Button(file_actions, text="Check File", command=check_file_urls)
 check_file_btn.pack(side=tk.LEFT, padx=2)
 style_action_button(check_file_btn, "primary")
 
-history_button = tk.Button(file_actions, text="History", command=show_history)
+history_button = ttk.Button(file_actions, text="History", command=show_history)
 history_button.pack(side=tk.LEFT, padx=2)
 style_action_button(history_button, "primary")
 
-stop_button = tk.Button(file_actions, text="Stop", command=request_stop)
+stop_button = ttk.Button(file_actions, text="Stop", command=request_stop)
 style_action_button(stop_button, "danger")
 
 # Specific URL field: move under file actions (new row)
-url_frame = tk.Frame(left_frame, bg="#f4f7f9")
+url_frame = tk.Frame(left_frame, bg=BG_COLOR)
 url_frame.grid(row=3, column=0, columnspan=2, sticky="w", pady=(4,6))
 
-tk.Label(url_frame, text="Specific URL to check:", font=label_font, fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
-url_entry = tk.Entry(url_frame, textvariable=specific_url_var, width=58, font=text_font, bd=1, relief=tk.FLAT)
+tk.Label(url_frame, text="Specific URL to check:", font=label_font, fg=FG_COLOR, bg=BG_COLOR).pack(side=tk.LEFT)
+url_entry = ttk.Entry(url_frame, textvariable=specific_url_var, width=58, font=text_font)
 url_entry.pack(side=tk.LEFT, padx=4, pady=2, ipady=4)
-specific_check_button = tk.Button(url_frame, text="Check URL", command=check_specific_url, state=tk.DISABLED)
+specific_check_button = ttk.Button(url_frame, text="Check URL", command=check_specific_url, state=tk.DISABLED)
 specific_check_button.pack(side=tk.LEFT, padx=2)
 style_action_button(specific_check_button, "primary")
-clear_url_btn = tk.Button(url_frame, text="Clear URL", command=clear_specific_url, state=tk.DISABLED)
+clear_url_btn = ttk.Button(url_frame, text="Clear URL", command=clear_specific_url, state=tk.DISABLED)
 clear_url_btn.pack(side=tk.LEFT, padx=2)
 style_action_button(clear_url_btn, "danger")
 url_entry.bind("<KeyRelease>", validate_specific_url)
@@ -1543,32 +1680,32 @@ specific_url_var.trace_add('write', lambda *args: validate_specific_url())
 validate_specific_url()
 
 # Progress bar row
-progress_frame = tk.Frame(root, bg="#f4f7f9")
+progress_frame = tk.Frame(root, bg=BG_COLOR)
 progress_frame.pack(pady=(2, 4), fill=tk.X, padx=12)
 
 progress_bar = ttk.Progressbar(progress_frame, variable=progress_var, maximum=100, style="Monitor.Horizontal.TProgressbar")
 progress_bar.pack(side=tk.LEFT, padx=3, pady=2, fill=tk.X, expand=True)
-progress_label = tk.Label(progress_frame, text="Progress: 0 / 0", font=button_font, bg="#f4f7f9", fg="#52606d")
+progress_label = tk.Label(progress_frame, text="Progress: 0 / 0", font=button_font, bg=BG_COLOR, fg="#a0a0a0" if IS_DARK_MODE else "#52606d")
 progress_label.pack(side=tk.LEFT, padx=5)
 
 # Slack controls moved to Settings dialog
 
 # Dashboard frame
 
-dashboard_frame = tk.Frame(root, bg="#f4f7f9", padx=12, pady=6)
+dashboard_frame = tk.Frame(root, bg=BG_COLOR, padx=12, pady=6)
 dashboard_frame.pack(padx=12, pady=(2, 3), fill=tk.X)
 for column in range(4):
     dashboard_frame.columnconfigure(column, weight=1)
 
-total_label = StatusLabel(dashboard_frame, text="Total checked: 0", font=(UI_FONT_FAMILY, 11, "bold"), bg="#e7eef2", fg="#176b87")
-healthy_label = StatusLabel(dashboard_frame, text="Healthy: 0", fg="#087f5b", font=(UI_FONT_FAMILY, 11, "bold"), bg="#e3f4ed")
-warning_label = StatusLabel(dashboard_frame, text="Warnings: 0", fg="#b54708", font=(UI_FONT_FAMILY, 11, "bold"), bg="#fff0d9")
-error_label = StatusLabel(dashboard_frame, text="Errors: 0", fg="#c92a2a", font=(UI_FONT_FAMILY, 11, "bold"), bg="#fde8e7")
-elapsed_label = tk.Label(dashboard_frame, text="Elapsed: 0.0s", anchor="w", font=(UI_FONT_FAMILY, 10), bg="#f4f7f9", fg="#52606d")
-last_checked_label = tk.Label(dashboard_frame, text="Last checked: -", anchor="w", font=(UI_FONT_FAMILY, 10), bg="#f4f7f9", fg="#52606d")
-health_rate_label = tk.Label(dashboard_frame, text="Health rate: -", anchor="w", font=(UI_FONT_FAMILY, 10, "bold"), bg="#f4f7f9", fg="#176b87")
-last_run_label = tk.Label(dashboard_frame, text="Last run: -", anchor="e", font=(UI_FONT_FAMILY, 10), bg="#f4f7f9", fg="#52606d")
-clock_label = tk.Label(dashboard_frame, text="Current time: -", anchor="e", font=(UI_FONT_FAMILY, 10, "italic"), bg="#f4f7f9", fg="#52606d")
+total_label = StatusLabel(dashboard_frame, text="Total checked: 0", font=(UI_FONT_FAMILY, 11, "bold"), bg=CARD_NEUTRAL, fg="#4cc2ff" if IS_DARK_MODE else "#176b87")
+healthy_label = StatusLabel(dashboard_frame, text="Healthy: 0", fg="#58d68d" if IS_DARK_MODE else "#087f5b", font=(UI_FONT_FAMILY, 11, "bold"), bg="#254634" if IS_DARK_MODE else "#e3f4ed")
+warning_label = StatusLabel(dashboard_frame, text="Warnings: 0", fg="#ffc857" if IS_DARK_MODE else "#b54708", font=(UI_FONT_FAMILY, 11, "bold"), bg="#4a3b1b" if IS_DARK_MODE else "#fff0d9")
+error_label = StatusLabel(dashboard_frame, text="Errors: 0", fg="#ff7b72" if IS_DARK_MODE else "#c92a2a", font=(UI_FONT_FAMILY, 11, "bold"), bg="#4a2525" if IS_DARK_MODE else "#fde8e7")
+elapsed_label = tk.Label(dashboard_frame, text="Elapsed: 0.0s", anchor="w", font=(UI_FONT_FAMILY, 10), bg=BG_COLOR, fg="#a0a0a0" if IS_DARK_MODE else "#52606d")
+last_checked_label = tk.Label(dashboard_frame, text="Last checked: -", anchor="w", font=(UI_FONT_FAMILY, 10), bg=BG_COLOR, fg="#a0a0a0" if IS_DARK_MODE else "#52606d")
+health_rate_label = tk.Label(dashboard_frame, text="Health rate: -", anchor="w", font=(UI_FONT_FAMILY, 10, "bold"), bg=BG_COLOR, fg="#4cc2ff" if IS_DARK_MODE else "#176b87")
+last_run_label = tk.Label(dashboard_frame, text="Last run: -", anchor="e", font=(UI_FONT_FAMILY, 10), bg=BG_COLOR, fg="#a0a0a0" if IS_DARK_MODE else "#52606d")
+clock_label = tk.Label(dashboard_frame, text="Current time: -", anchor="e", font=(UI_FONT_FAMILY, 10, "italic"), bg=BG_COLOR, fg="#a0a0a0" if IS_DARK_MODE else "#52606d")
 
 total_label.grid(row=0, column=0, sticky="w", padx=6, pady=3)
 healthy_label.grid(row=0, column=1, sticky="w", padx=6, pady=3)
@@ -1581,23 +1718,23 @@ last_run_label.grid(row=1, column=3, sticky="e", padx=6, pady=(8, 3))
 clock_label.grid(row=2, column=0, columnspan=4, sticky="e", padx=6, pady=(0, 2))
 
 # Output box
-results_header = tk.Frame(root, bg="#f4f7f9")
+results_header = tk.Frame(root, bg=BG_COLOR)
 results_header.pack(padx=12, pady=(6, 0), fill=tk.X)
-tk.Label(results_header, text="Check results", font=(UI_FONT_FAMILY, 12, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
-copy_results_button = tk.Button(results_header, text="Copy Results", command=copy_results)
+tk.Label(results_header, text="Check results", font=(UI_FONT_FAMILY, 12, "bold"), fg=FG_COLOR, bg=BG_COLOR).pack(side=tk.LEFT)
+copy_results_button = ttk.Button(results_header, text="Copy Results", command=copy_results)
 copy_results_button.pack(side=tk.RIGHT, padx=(3, 0))
 style_action_button(copy_results_button)
-clear_results_btn = tk.Button(results_header, text="Clear Results", command=clear_results)
+clear_results_btn = ttk.Button(results_header, text="Clear Results", command=clear_results)
 clear_results_btn.pack(side=tk.RIGHT, padx=(3, 0))
 style_action_button(clear_results_btn, "warning")
-export_button = tk.Button(results_header, text="Export Report", command=export_results)
+export_button = ttk.Button(results_header, text="Export Report", command=export_results)
 export_button.pack(side=tk.RIGHT, padx=(3, 0))
 style_action_button(export_button, "primary")
 
-results_area = tk.Frame(root, bg="#f4f7f9")
+results_area = tk.Frame(root, bg=BG_COLOR)
 results_area.pack(padx=12, pady=(4, 4), fill=tk.BOTH, expand=True)
 
-output_box = scrolledtext.ScrolledText(results_area, width=104, height=20, bd=1, relief=tk.SUNKEN, font=(MONO_FONT_FAMILY, 10), bg="#fbfcfd", fg="#172b4d", padx=8, pady=6)
+output_box = scrolledtext.ScrolledText(results_area, width=104, height=20, bd=1, relief=tk.SUNKEN, font=(MONO_FONT_FAMILY, 10), bg=TEXT_BG, fg=TEXT_FG, padx=8, pady=6)
 output_box.pack(fill=tk.BOTH, expand=True)
 output_box.config(state=tk.DISABLED)
 output_box.tag_config("success", foreground="#008000")
@@ -1619,7 +1756,6 @@ bind_hover_hint(specific_check_button, "Check only the URL entered above.")
 bind_hover_hint(clear_url_btn, "Remove the URL from the focused-check field.")
 bind_hover_hint(progress_frame, "Track how many URLs in the current run have been checked.")
 bind_hover_hint(dashboard_frame, "See the current run totals, health rate, timing, and clock.")
-bind_hover_hint(results_header, "Use these actions to copy, clear, or export the check output.")
 bind_hover_hint(copy_results_button, "Copy the complete check output to the clipboard.")
 bind_hover_hint(clear_results_btn, "Clear the check output and reset the dashboard.")
 bind_hover_hint(export_button, "Save the check output as a timestamped text report.")
@@ -1655,6 +1791,7 @@ update_clear_results_state()
 update_file_insights()
 schedule_interval_check()
 update_slack_status()
+refresh_os_theme()
 
 
 def open_file_viewer():
@@ -1679,6 +1816,5 @@ def open_file_viewer():
     txt.insert(1.0, content)
     txt.config(state=tk.DISABLED)
 
-animate_logo()
 update_clock()
 root.mainloop()

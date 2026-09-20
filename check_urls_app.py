@@ -47,7 +47,7 @@ if not os.path.exists(DEFAULT_FILE) and os.path.exists(bundled_default_file):
         pass
 
 current_file = DEFAULT_FILE
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 APP_YEAR = time.strftime('%Y')
 CONFIG_FILE = os.path.join(base_path, "monitor_urls_config.json")
 HISTORY_FILE = os.path.join(base_path, "check_history.json")
@@ -67,7 +67,6 @@ stop_button = None
 run_status_label = None
 interval_status_label = None
 slack_status_label = None
-hover_hint_label = None
 stop_requested = False
 interval_job = None
 interval_countdown_job = None
@@ -78,7 +77,6 @@ root = None
 window_geometry = "1040x760"
 window_state = "normal"
 status_animation_id = None
-hover_hint_animation_id = None
 tray_icon = None
 tray_thread = None
 tray_thread_id = None
@@ -150,39 +148,8 @@ def set_run_status(text, fg="#52606d"):
     reveal()
 
 
-def set_hover_hint(text, fg="#52606d"):
-    """Type a short contextual hint into the page status bar."""
-    global hover_hint_animation_id
-    if hover_hint_animation_id is not None and root is not None:
-        try:
-            root.after_cancel(hover_hint_animation_id)
-        except tk.TclError:
-            pass
-        hover_hint_animation_id = None
-
-    if hover_hint_label is None:
-        return
-
-    display_text = f"Hint: {text}"
-    hover_hint_label.config(text="", fg=fg)
-
-    def reveal(index=0):
-        global hover_hint_animation_id
-        if not hover_hint_label.winfo_exists():
-            hover_hint_animation_id = None
-            return
-        hover_hint_label.config(text=display_text[:index], fg=fg)
-        if index < len(display_text):
-            hover_hint_animation_id = root.after(18, lambda: reveal(index + 1))
-        else:
-            hover_hint_animation_id = None
-
-    reveal()
-
-
 def bind_hover_hint(widget, text):
-    widget.bind("<Enter>", lambda event, hint=text: set_hover_hint(hint), add="+")
-    widget.bind("<Leave>", lambda event: set_hover_hint("Move over an item to see what it does."), add="+")
+    ToolTip(widget, text)
 
 
 def resolve_file_path(path):
@@ -317,88 +284,63 @@ class ToolTip:
         self.widget = widget
         self.text = text
         self.tipwindow = None
-        widget.bind("<Enter>", self.show_tip)
-        widget.bind("<Leave>", self.hide_tip)
+        self.tip_job = None
+        self.tip_animation_id = None
+        widget.bind("<Enter>", self.show_tip, add="+")
+        widget.bind("<Leave>", self.hide_tip, add="+")
 
     def show_tip(self, event=None):
-        if self.tipwindow or not self.text:
+        if self.tipwindow or self.tip_job or not self.text:
             return
         x = event.x_root + 10
         y = event.y_root + 10
+        self.tip_job = self.widget.after(1000, lambda: self._display_tip(x, y))
+
+    def _display_tip(self, x, y):
+        self.tip_job = None
+        if self.tipwindow or not self.text or not self.widget.winfo_exists():
+            return
         self.tipwindow = tw = tk.Toplevel(self.widget)
         tw.wm_overrideredirect(True)
         tw.wm_geometry(f"+{x}+{y}")
-        label = tk.Label(tw, text=self.text, justify=tk.LEFT, background="#fff8d5", relief=tk.SOLID, borderwidth=1, font=(UI_FONT_FAMILY, 9))
-        label.pack(ipadx=4, ipady=2)
+        self.tip_label = tk.Label(
+            tw,
+            text="",
+            width=min(max(len(self.text), 24), 72),
+            justify=tk.LEFT,
+            anchor="nw",
+            wraplength=520,
+            background="#fff8d5",
+            relief=tk.SOLID,
+            borderwidth=1,
+            font=(UI_FONT_FAMILY, 9),
+        )
+        self.tip_label.pack(ipadx=4, ipady=2)
+        self._reveal_text()
+
+    def _reveal_text(self, index=0):
+        if not self.tipwindow or not self.tipwindow.winfo_exists():
+            self.tip_animation_id = None
+            return
+        self.tip_label.config(text=self.text[:index])
+        if index < len(self.text):
+            self.tip_animation_id = self.widget.after(24, lambda: self._reveal_text(index + 1))
+        else:
+            self.tip_animation_id = None
 
     def hide_tip(self, event=None):
+        if self.tip_job:
+            self.widget.after_cancel(self.tip_job)
+            self.tip_job = None
+        if self.tip_animation_id:
+            self.widget.after_cancel(self.tip_animation_id)
+            self.tip_animation_id = None
         if self.tipwindow:
             self.tipwindow.destroy()
             self.tipwindow = None
 
 
-BUTTON_THEMES = {
-    "primary": {
-        "bg": "#176b87", "hover": "#2b8aa3", "pressed": "#0f5268", "border": "#0f5268",
-        "fg": "#ffffff", "active_fg": "#ffffff",
-    },
-    "neutral": {
-        "bg": "#ffffff", "hover": "#eef5f7", "pressed": "#dbe9ed", "border": "#b9cbd1",
-        "fg": "#12343b", "active_fg": "#12343b",
-    },
-    "warning": {
-        "bg": "#fff7e8", "hover": "#ffefd0", "pressed": "#f8d99e", "border": "#e6b85c",
-        "fg": "#8a4300", "active_fg": "#6d3300",
-    },
-    "danger": {
-        "bg": "#fff4f3", "hover": "#ffe5e3", "pressed": "#f8c5c1", "border": "#df9690",
-        "fg": "#a61e1e", "active_fg": "#861818",
-    },
-}
-
-
 def style_action_button(button, tone="neutral"):
-    theme = BUTTON_THEMES[tone]
-    button.configure(
-        bg=theme["bg"],
-        fg=theme["fg"],
-        activebackground=theme["hover"],
-        activeforeground=theme["active_fg"],
-        disabledforeground="#9aa8ad",
-        relief=tk.FLAT,
-        overrelief=tk.FLAT,
-        bd=1,
-        borderwidth=1,
-        highlightthickness=1,
-        highlightbackground=theme["border"],
-        highlightcolor="#2b8aa3",
-        padx=12,
-        pady=5,
-        font=(UI_FONT_FAMILY, 10, "bold"),
-        cursor="hand2",
-    )
-
-    def on_enter(event):
-        if button["state"] != tk.DISABLED:
-            button.configure(bg=theme["hover"])
-
-    def on_leave(event):
-        if button["state"] != tk.DISABLED:
-            button.configure(bg=theme["bg"], relief=tk.FLAT)
-
-    def on_press(event):
-        if button["state"] != tk.DISABLED:
-            button.configure(bg=theme["pressed"], relief=tk.FLAT, highlightbackground=theme["border"])
-
-    def on_release(event):
-        if button["state"] != tk.DISABLED:
-            button.configure(bg=theme["hover"], relief=tk.FLAT)
-            button.after(110, lambda: button.configure(bg=theme["bg"]) if button.winfo_exists() else None)
-
-    button.bind("<Enter>", on_enter, add="+")
-    button.bind("<Leave>", on_leave, add="+")
-    button.bind("<ButtonPress-1>", on_press, add="+")
-    button.bind("<ButtonRelease-1>", on_release, add="+")
     return button
 
 
@@ -1037,11 +979,11 @@ def show_history():
         save_history()
         refresh_rows()
 
-    purge_button = tk.Button(footer, text="Purge History", command=purge_history, font=button_font)
-    purge_button.pack(side=tk.RIGHT, padx=(8, 0))
+    purge_button = tk.Button(footer, text="Purge History", command=purge_history, width=12)
+    purge_button.pack(side=tk.RIGHT, padx=(6, 0))
     style_action_button(purge_button, "danger")
-    close_button = tk.Button(footer, text="Close", command=history_win.destroy, font=button_font)
-    close_button.pack(side=tk.RIGHT)
+    close_button = tk.Button(footer, text="Close", command=history_win.destroy, width=12)
+    close_button.pack(side=tk.RIGHT, padx=(6, 0))
     style_action_button(close_button)
     refresh_rows()
 
@@ -1139,7 +1081,7 @@ def show_instructions():
     txt.insert(tk.END, text)
     txt.config(state=tk.DISABLED)
 
-    btn = tk.Button(win, text="Close", command=win.destroy, width=10, bg=BG_COLOR, fg=FG_COLOR)
+    btn = tk.Button(win, text="Close", command=win.destroy, width=10)
     btn.grid(row=1, column=0, sticky="e", padx=8, pady=(0,8))
     style_action_button(btn)
 
@@ -1299,8 +1241,9 @@ def restore_from_tray():
 
 def minimize_to_tray(event=None):
     if sys.platform == "win32" and not app_exiting and root.state() == "iconic":
-        root.withdraw()
         start_tray_icon()
+        if tray_icon is not None:
+            root.withdraw()
 
 
 def close_app():
@@ -1324,8 +1267,6 @@ ENTRY_FG = "#12343b"
 TEXT_BG = "#fbfcfd"
 TEXT_FG = "#172b4d"
 
-if sys.platform == "win32":
-    root.bind("<Unmap>", lambda event: root.after_idle(minimize_to_tray))
 if sys.platform == "darwin":
     # Keep baseline colors explicit on macOS where Tk can inherit low-contrast defaults.
     root.option_add("*Label.Background", BG_COLOR)
@@ -1461,7 +1402,7 @@ def open_settings():
 
     tk.Label(settings_win, text="Default URL file:", font=label_font, bg=BG_COLOR, fg=FG_COLOR).grid(row=0, column=0, sticky="w", padx=10, pady=8)
     tk.Entry(settings_win, textvariable=default_file_var, font=text_font, bg=ENTRY_BG, fg=ENTRY_FG).grid(row=0, column=1, padx=6, pady=8, sticky="ew")
-    browse_button = tk.Button(settings_win, text="Browse...", command=browse_for_file, bg=BG_COLOR, fg=FG_COLOR)
+    browse_button = tk.Button(settings_win, text="Browse...", command=browse_for_file)
     browse_button.grid(row=0, column=2, padx=6, pady=8)
     style_action_button(browse_button)
 
@@ -1484,11 +1425,11 @@ def open_settings():
     update_interval_input_state()
 
     btn_frame = tk.Frame(settings_win)
-    btn_frame.grid(row=6, column=0, columnspan=3, sticky="e", padx=6, pady=12)
+    btn_frame.grid(row=6, column=0, columnspan=3, sticky="e", padx=6, pady=(12, 0))
     save_button = tk.Button(btn_frame, text="Save", command=save_and_close, width=12)
     save_button.pack(side=tk.RIGHT, padx=(6,0))
     style_action_button(save_button, "primary")
-    cancel_button = tk.Button(btn_frame, text="Cancel", command=settings_win.destroy, width=12, bg=BG_COLOR, fg=FG_COLOR)
+    cancel_button = tk.Button(btn_frame, text="Cancel", command=settings_win.destroy, width=12)
     cancel_button.pack(side=tk.RIGHT, padx=(6,0))
     style_action_button(cancel_button)
 
@@ -1569,23 +1510,20 @@ file_stats_label.grid(row=1, column=0, columnspan=2, sticky="w")
 file_actions = tk.Frame(left_frame, bg="#f4f7f9")
 file_actions.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 6))
 
-choose_file_btn = tk.Button(file_actions, text="Choose File...", command=browse_file, font=button_font)
+choose_file_btn = tk.Button(file_actions, text="Choose File...", command=browse_file)
 choose_file_btn.pack(side=tk.LEFT, padx=2)
 style_action_button(choose_file_btn)
-ToolTip(choose_file_btn, "Choose URL list file")
 
-check_file_btn = tk.Button(file_actions, text="Check File", command=check_file_urls, font=button_font, fg="green")
+check_file_btn = tk.Button(file_actions, text="Check File", command=check_file_urls)
 check_file_btn.pack(side=tk.LEFT, padx=2)
 style_action_button(check_file_btn, "primary")
-ToolTip(check_file_btn, "Check all URLs in file")
 
-history_button = tk.Button(file_actions, text="History", command=show_history, font=button_font, fg="#176b87")
+history_button = tk.Button(file_actions, text="History", command=show_history)
 history_button.pack(side=tk.LEFT, padx=2)
 style_action_button(history_button, "primary")
 
-stop_button = tk.Button(file_actions, text="Stop", command=request_stop, font=button_font, fg="red")
+stop_button = tk.Button(file_actions, text="Stop", command=request_stop)
 style_action_button(stop_button, "danger")
-ToolTip(stop_button, "Stop the running URL check")
 
 # Specific URL field: move under file actions (new row)
 url_frame = tk.Frame(left_frame, bg="#f4f7f9")
@@ -1594,14 +1532,12 @@ url_frame.grid(row=3, column=0, columnspan=2, sticky="w", pady=(4,6))
 tk.Label(url_frame, text="Specific URL to check:", font=label_font, fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
 url_entry = tk.Entry(url_frame, textvariable=specific_url_var, width=58, font=text_font, bd=1, relief=tk.FLAT)
 url_entry.pack(side=tk.LEFT, padx=4, pady=2, ipady=4)
-specific_check_button = tk.Button(url_frame, text="Check URL", command=check_specific_url, font=button_font, state=tk.DISABLED, fg="green")
+specific_check_button = tk.Button(url_frame, text="Check URL", command=check_specific_url, state=tk.DISABLED)
 specific_check_button.pack(side=tk.LEFT, padx=2)
 style_action_button(specific_check_button, "primary")
-ToolTip(specific_check_button, "Check this specific URL")
-clear_url_btn = tk.Button(url_frame, text="Clear URL", command=clear_specific_url, font=button_font, state=tk.DISABLED, fg="red")
+clear_url_btn = tk.Button(url_frame, text="Clear URL", command=clear_specific_url, state=tk.DISABLED)
 clear_url_btn.pack(side=tk.LEFT, padx=2)
 style_action_button(clear_url_btn, "danger")
-ToolTip(clear_url_btn, "Clear URL input")
 url_entry.bind("<KeyRelease>", validate_specific_url)
 specific_url_var.trace_add('write', lambda *args: validate_specific_url())
 validate_specific_url()
@@ -1648,33 +1584,18 @@ clock_label.grid(row=2, column=0, columnspan=4, sticky="e", padx=6, pady=(0, 2))
 results_header = tk.Frame(root, bg="#f4f7f9")
 results_header.pack(padx=12, pady=(6, 0), fill=tk.X)
 tk.Label(results_header, text="Check results", font=(UI_FONT_FAMILY, 12, "bold"), fg="#12343b", bg="#f4f7f9").pack(side=tk.LEFT)
-copy_results_button = tk.Button(results_header, text="Copy Results", command=copy_results, font=button_font)
+copy_results_button = tk.Button(results_header, text="Copy Results", command=copy_results)
 copy_results_button.pack(side=tk.RIGHT, padx=(3, 0))
 style_action_button(copy_results_button)
-clear_results_btn = tk.Button(results_header, text="Clear Results", command=clear_results, font=button_font, fg="orange")
+clear_results_btn = tk.Button(results_header, text="Clear Results", command=clear_results)
 clear_results_btn.pack(side=tk.RIGHT, padx=(3, 0))
 style_action_button(clear_results_btn, "warning")
-ToolTip(clear_results_btn, "Clear results")
-export_button = tk.Button(results_header, text="Export Report", command=export_results, font=button_font, fg="#176b87")
+export_button = tk.Button(results_header, text="Export Report", command=export_results)
 export_button.pack(side=tk.RIGHT, padx=(3, 0))
 style_action_button(export_button, "primary")
 
 results_area = tk.Frame(root, bg="#f4f7f9")
 results_area.pack(padx=12, pady=(4, 4), fill=tk.BOTH, expand=True)
-
-hint_status_frame = tk.Frame(results_area, bg="#fff8d5", highlightthickness=1, highlightbackground="#d9c36c")
-hint_status_frame.pack(fill=tk.X, pady=(0, 4))
-hover_hint_label = tk.Label(
-    hint_status_frame,
-    text="Hover hint status: move over an item to see what it does.",
-    anchor="w",
-    font=(UI_FONT_FAMILY, 9, "bold"),
-    fg="#6d5b00",
-    bg="#fff8d5",
-    padx=8,
-    pady=5,
-)
-hover_hint_label.pack(fill=tk.X)
 
 output_box = scrolledtext.ScrolledText(results_area, width=104, height=20, bd=1, relief=tk.SUNKEN, font=(MONO_FONT_FAMILY, 10), bg="#fbfcfd", fg="#172b4d", padx=8, pady=6)
 output_box.pack(fill=tk.BOTH, expand=True)

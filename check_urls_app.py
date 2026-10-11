@@ -849,7 +849,7 @@ def update_slack_status():
     if slack_status_label is None:
         return
     if SLACK_ENABLED:
-        slack_status_label.config(text="Slack: ON", fg="#087f5b")
+        slack_status_label.config(text="Slack: On", fg="#087f5b")
     else:
         slack_status_label.config(text="Slack: Off", fg=MUTED_COLOR)
 

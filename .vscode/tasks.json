@@ -1,0 +1,1065 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build URL Monitor executable",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"PyInstaller",
+				"check_urls_app.spec",
+				"--noconfirm",
+				"--clean"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Build URL Monitor executable (fresh output)",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"PyInstaller",
+				"check_urls_app.spec",
+				"--noconfirm",
+				"--clean",
+				"--distpath",
+				"dist_dev"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Validate and inspect repository",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-c",
+				"import ast; from pathlib import Path; tree=ast.parse(Path('check_urls_app.py').read_text(encoding='utf-8')); fn=next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == 'is_valid_slack_webhook_url'); namespace={}; exec(compile(ast.Module(body=[fn], type_ignores=[]), 'check_urls_app.py', 'exec'), {'urlsplit': __import__('urllib.parse', fromlist=['urlsplit']).urlsplit, 're': __import__('re')}, namespace); check=namespace[fn.name]; assert check('https://hooks.slack.com/services/T000/B000/secret'); assert not check('http://hooks.slack.com/services/T000/B000/secret'); assert not check('https://example.com/services/T000/B000/secret'); assert not check('https://hooks.slack.com/services/T000/B000'); print('Slack URL validation checks passed')"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Run Python syntax check",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"py_compile",
+				"check_urls_app.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Commit and push URL Monitor changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"check_urls_app.py",
+				"check_urls_app.spec",
+				"check_urls_app_v121.spec",
+				"dist_dev/check_urls_app.exe",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"Fix tray behavior and Slack URL validation",
+				"&&",
+				"git",
+				"push",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect Git state",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short",
+				"--branch"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect Git remote",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"remote",
+				"-v"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Stage URL Monitor changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"check_urls_app.py",
+				"check_urls_app.spec",
+				"check_urls_app_v121.spec",
+				"dist_dev/check_urls_app.exe"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Commit URL Monitor changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Fix tray behavior and Slack URL validation"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Push URL Monitor dev branch",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Rebase onto remote dev",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"pull",
+				"--rebase",
+				"--autostash",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Release locked old executable",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process -Name check_urls_app -ErrorAction SilentlyContinue | Stop-Process -Force"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Complete rebase onto remote dev",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"pull",
+				"--rebase",
+				"--autostash",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect rebase state",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Continue URL Monitor rebase",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.editor=true",
+				"rebase",
+				"--continue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check rebase conflicts",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"diff",
+				"--name-only",
+				"--diff-filter=U"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check staged rebase changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"diff",
+				"--cached",
+				"--name-status"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect rebased commit history",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"log",
+				"--oneline",
+				"--decorate",
+				"-5"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect remote dev tip",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"log",
+				"--oneline",
+				"--decorate",
+				"origin/dev",
+				"-5"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Reset interrupted rebase state",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"rebase",
+				"--abort"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Clear stale rebase metadata",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Remove-Item -Recurse -Force .git/rebase-merge"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Rebase URL Monitor commit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"pull",
+				"--rebase",
+				"--autostash",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Clear stale Git lock",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Remove-Item -Force .git/index.lock -ErrorAction SilentlyContinue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Retry rebase URL Monitor commit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"pull",
+				"--rebase",
+				"--autostash",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Remove stale Git index lock",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"del",
+				"/f",
+				"/q",
+				".git\\index.lock"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Stop stalled Git process",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process -Name git -ErrorAction SilentlyContinue | Stop-Process -Force"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Remove released Git lock",
+			"type": "shell",
+			"command": "cmd",
+			"args": [
+				"/c",
+				"del",
+				"/f",
+				"/q",
+				".git\\index.lock"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Rebase URL Monitor commit cleanly",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"pull",
+				"--rebase",
+				"--autostash",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Mark rebase conflicts resolved",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"check_urls_app.py",
+				"dist_dev/check_urls_app.exe"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Keep upstream spec deletion",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"rm",
+				"check_urls_app_v121.spec"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Continue resolved rebase",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"-c",
+				"core.editor=true",
+				"rebase",
+				"--continue"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Push rebased URL Monitor changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Final Python syntax validation",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"py_compile",
+				"check_urls_app.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Confirm pushed Git state",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short",
+				"--branch"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Stop running URL Monitor",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process -Name check_urls_app -ErrorAction SilentlyContinue | Stop-Process -Force"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build actual URL Monitor executable",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"PyInstaller",
+				"check_urls_app.spec",
+				"--noconfirm",
+				"--clean"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Commit rebuilt dist executable",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"dist/check_urls_app.exe"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Commit rebuilt executable",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Build updated Windows executable"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Push rebuilt executable",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate hover status code",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"py_compile",
+				"check_urls_app.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build hover status executable",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"PyInstaller",
+				"check_urls_app.spec",
+				"--noconfirm",
+				"--clean"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Release executable lock",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process -Name check_urls_app -ErrorAction SilentlyContinue | Stop-Process -Force"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Rebuild hover status executable",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"PyInstaller",
+				"check_urls_app.spec",
+				"--noconfirm",
+				"--clean"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Stage hover status changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"check_urls_app.py",
+				"dist/check_urls_app.exe"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Commit hover status changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Add hover hint status bar"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Push hover status changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect built executable",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Item dist\\check_urls_app.exe | Select-Object FullName,Length,LastWriteTime; git log -1 --oneline"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate reserved hover bar layout",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"py_compile",
+				"check_urls_app.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Stop URL Monitor before rebuild",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process -Name check_urls_app -ErrorAction SilentlyContinue | Stop-Process -Force"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build visible hover status executable",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"PyInstaller",
+				"check_urls_app.spec",
+				"--noconfirm",
+				"--clean"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Commit visible hover bar",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"check_urls_app.py",
+				"dist/check_urls_app.exe"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Commit and push visible hover bar",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"git commit -m 'Keep hover status bar visible'; if ($LASTEXITCODE -eq 0) { git push origin dev }"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Commit visible hover bar fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Keep hover status bar visible"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Push visible hover bar fix",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate relocated hint bar",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"py_compile",
+				"check_urls_app.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Stop old executable locally",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process -Name check_urls_app -ErrorAction SilentlyContinue | Stop-Process -Force"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build local relocated hint bar",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"PyInstaller",
+				"check_urls_app.spec",
+				"--noconfirm",
+				"--clean"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Validate bottom status layout",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"py_compile",
+				"check_urls_app.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build local bottom status bar",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"PyInstaller",
+				"check_urls_app.spec",
+				"--noconfirm",
+				"--clean"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Build inline results hint bar",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"PyInstaller",
+				"check_urls_app.spec",
+				"--noconfirm",
+				"--clean"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Release local executable lock",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process -Name check_urls_app -ErrorAction SilentlyContinue | Stop-Process -Force"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Rebuild inline results hint bar",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"PyInstaller",
+				"check_urls_app.spec",
+				"--noconfirm",
+				"--clean"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "Inspect branches and changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short",
+				"--branch"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect recent commits",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"log",
+				"--oneline",
+				"--decorate",
+				"--all",
+				"-8"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect remote branches",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"branch",
+				"-r"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Stage latest app changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"check_urls_app.py",
+				"dist/check_urls_app.exe"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Commit latest app changes",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Place hover status in results field"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Push dev branch",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Publish changes to main",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"push",
+				"origin",
+				"dev:main"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify remote dev tip",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"ls-remote",
+				"origin",
+				"refs/heads/dev"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify remote main tip",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"ls-remote",
+				"origin",
+				"refs/heads/main"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Amend Stable commit",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"--amend",
+				"-m",
+				"Stable"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Regenerate URL Monitor icon",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-c",
+				"from PIL import Image; Image.open('url_monitor.iconset/icon_128x128.png').convert('RGBA').save('url_monitor.ico', format='ICO', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Regenerate URL Monitor icon",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-c",
+				"from PIL import Image; Image.open(\"url_monitor.iconset/icon_128x128.png\").convert(\"RGBA\").save(\"url_monitor.ico\", format=\"ICO\", sizes=[(16,16),(32,32),(48,48),(64,64),(128,128)])"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Generate URL Monitor ICO",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"generate_icon.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Generate Windows URL Monitor ICO",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"generate_icon.ps1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Generate Windows URL Monitor ICO",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Content .\\generate_icon.ps1 | Invoke-Expression"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Generate ICO inline",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Content .\\generate_icon.ps1 | Invoke-Expression"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Generate distinct URL Monitor icon",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Content .\\generate_new_icon.ps1 | Invoke-Expression"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Stage release application files",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"check_urls_app.py",
+				"check_urls_app.spec",
+				"dist/check_urls_app.exe",
+				"url_monitor.ico",
+				"url_monitor.iconset/url_monitor_new.png"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Commit release application files",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"commit",
+				"-m",
+				"Update live theme and countdown UI"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Align status labels and push to dev/main",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"add",
+				"check_urls_app.py",
+				"&&",
+				"git",
+				"commit",
+				"-m",
+				"Align status labels to Off/On",
+				"&&",
+				"git",
+				"push",
+				"origin",
+				"HEAD:dev",
+				"&&",
+				"git",
+				"push",
+				"origin",
+				"HEAD:main"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

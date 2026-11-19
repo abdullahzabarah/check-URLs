@@ -1,5 +1,5 @@
 {
-  "default_file": "D:/monitor_urls/urls.txt",
+  "default_file": "D:/urls - ARM Project.txt",
   "slack_webhook_url": "sadaASDaDS",
   "slack_enabled": false,
   "interval_check_enabled": true,

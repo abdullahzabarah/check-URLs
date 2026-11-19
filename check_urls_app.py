@@ -7,6 +7,7 @@ import time
 import json
 import threading
 import ctypes
+import subprocess
 from ctypes import wintypes
 from urllib.parse import urlsplit
 import tkinter as tk
@@ -60,6 +61,7 @@ SLACK_ENABLED = True
 INTERVAL_CHECK_ENABLED = False
 INTERVAL_MINUTES = 5
 INTERVAL_UNIT = "Minutes"
+THEME_MODE = "system"
 
 specific_check_button = None
 progress_var = None
@@ -114,6 +116,7 @@ def save_config():
                 "interval_check_enabled": INTERVAL_CHECK_ENABLED,
                 "interval_minutes": INTERVAL_MINUTES,
                 "interval_unit": INTERVAL_UNIT,
+                "theme": THEME_MODE,
                 "window_geometry": current_geometry,
                 "window_state": current_state,
             }, f, indent=2)
@@ -123,6 +126,13 @@ def save_config():
 
 def set_run_status(text, fg="#52606d"):
     global status_animation_id
+    if IS_DARK_MODE:
+        fg = {
+            "#52606d": "#a0a0a0",
+            "#176b87": "#4cc2ff",
+            "#087f5b": "#58d68d",
+            "#b54708": "#ffc857",
+        }.get(fg, fg)
     if status_animation_id is not None and root is not None:
         try:
             root.after_cancel(status_animation_id)
@@ -191,7 +201,7 @@ def read_url_file(path):
 
 
 def load_config():
-    global current_file, SLACK_WEBHOOK_URL, window_geometry, window_state
+    global current_file, SLACK_WEBHOOK_URL, window_geometry, window_state, THEME_MODE
     global INTERVAL_CHECK_ENABLED, INTERVAL_MINUTES, INTERVAL_UNIT
     if os.path.exists(CONFIG_FILE):
         try:
@@ -209,6 +219,9 @@ def load_config():
             INTERVAL_UNIT = cfg.get("interval_unit", INTERVAL_UNIT)
             if INTERVAL_UNIT not in ("Seconds", "Minutes", "Hours"):
                 INTERVAL_UNIT = "Minutes"
+            THEME_MODE = cfg.get("theme", THEME_MODE)
+            if THEME_MODE not in ("system", "light", "dark"):
+                THEME_MODE = "system"
             window_geometry = cfg.get("window_geometry", window_geometry)
             window_state = cfg.get("window_state", window_state)
         except Exception:
@@ -831,7 +844,7 @@ def update_interval_status():
         total_seconds = INTERVAL_MINUTES * {"Seconds": 1, "Minutes": 60, "Hours": 60 * 60}[INTERVAL_UNIT]
         remaining = max(0, (interval_due_at - time.monotonic()) if interval_due_at else 0)
         minutes, seconds = divmod(remaining, 60)
-        next_run_label.config(text="Next run: On", fg="#087f5b")
+        next_run_label.config(text="Next run: On", fg="#58d68d" if IS_DARK_MODE else "#087f5b")
         interval_status_label.config(
             text=f"{int(minutes)}:{int(seconds):02d}",
             fg=MUTED_COLOR,
@@ -849,7 +862,7 @@ def update_slack_status():
     if slack_status_label is None:
         return
     if SLACK_ENABLED:
-        slack_status_label.config(text="Slack: On", fg="#087f5b")
+        slack_status_label.config(text="Slack: On", fg="#58d68d" if IS_DARK_MODE else "#087f5b")
     else:
         slack_status_label.config(text="Slack: Off", fg=MUTED_COLOR)
 
@@ -1083,7 +1096,7 @@ def show_instructions():
         "3. Specific URL: Enter a single URL in the 'Specific URL to check' field and click 'Check URL' to test it.\n\n"
         "4. Results: Results appear in the main output area. Click any URL in the results to copy it to the Specific URL field and clipboard.\n\n"
         "5. Clear: Use 'Clear Results' to clear the output and reset the dashboard; use 'Clear URL' to clear the specific URL field.\n\n"
-        "6. Settings: Open Settings from the Settings menu to configure the default file and Slack webhook, and enable/disable Slack alerts.\n\n"
+        "6. Settings: Open Settings from the Settings menu to configure the default file, Slack alerts, automatic checks, and the app theme.\n\n"
         "7. Slack: When enabled, Slack notifications will be sent to the configured webhook whenever issues are detected.\n\n"
         "8. File viewer: Click the 'Using file:' label to open and view the current URL file contents.\n\n"
         "9. Export: Use 'Export Report' above the results to save a timestamped text report.\n\n"
@@ -1122,7 +1135,19 @@ load_config()
 load_history()
 
 
-def windows_apps_use_light_theme():
+def system_uses_light_theme():
+    if sys.platform == "darwin":
+        try:
+            result = subprocess.run(
+                ["defaults", "read", "-g", "AppleInterfaceStyle"],
+                capture_output=True,
+                text=True,
+                timeout=1,
+                check=False,
+            )
+            return result.returncode != 0 or result.stdout.strip().casefold() != "dark"
+        except (OSError, subprocess.TimeoutExpired):
+            return True
     if sys.platform != "win32":
         return True
     try:
@@ -1142,7 +1167,9 @@ def windows_apps_use_light_theme():
         return True
 
 
-IS_DARK_MODE = not windows_apps_use_light_theme()
+IS_DARK_MODE = THEME_MODE == "dark" or (
+    THEME_MODE == "system" and not system_uses_light_theme()
+)
 if IS_DARK_MODE:
     BG_COLOR = "#202020"
     FG_COLOR = "#f3f3f3"
@@ -1375,7 +1402,7 @@ if sys.platform != "darwin":
             pass
 style.configure("TEntry", fieldbackground=ENTRY_BG, foreground=ENTRY_FG, padding=4)
 style.configure("TCombobox", fieldbackground=ENTRY_BG, foreground=ENTRY_FG, padding=3)
-style.map("TCombobox", fieldbackground=[("disabled", "#e5e5e5")])
+style.map("TCombobox", fieldbackground=[("disabled", "#3a3a3a" if IS_DARK_MODE else "#e5e5e5")])
 button_surface = "#2b2b2b" if IS_DARK_MODE else "#ffffff"
 button_hover = "#383838" if IS_DARK_MODE else "#f5f5f5"
 button_pressed = "#444444" if IS_DARK_MODE else "#e5e5e5"
@@ -1385,18 +1412,22 @@ style.map(
     background=[("disabled", "#303030" if IS_DARK_MODE else "#e5e5e5"), ("pressed", button_pressed), ("active", button_hover)],
     foreground=[("disabled", "#777777" if IS_DARK_MODE else "#8a8a8a")],
 )
-style.configure("TCheckbutton", font=(UI_FONT_FAMILY, 10), padding=3)
+style.configure("TCheckbutton", background=BG_COLOR, foreground=FG_COLOR, font=(UI_FONT_FAMILY, 10), padding=3)
+style.map("TCheckbutton", background=[("active", BG_COLOR)], foreground=[("disabled", MUTED_COLOR)])
+style.configure("TScrollbar", background="#383838" if IS_DARK_MODE else "#f5f5f5", troughcolor=BG_COLOR)
 style.configure("Treeview", background=ENTRY_BG, fieldbackground=ENTRY_BG, foreground=FG_COLOR, rowheight=28, borderwidth=0)
-style.configure("Treeview.Heading", background="#e5e5e5", foreground=FG_COLOR, font=(UI_FONT_FAMILY, 9, "bold"), padding=(6, 5))
-style.configure("Monitor.Horizontal.TProgressbar", troughcolor="#e5e5e5", background="#0067c0", lightcolor="#0067c0", darkcolor="#0067c0", borderwidth=0)
+style.configure("Treeview.Heading", background="#303030" if IS_DARK_MODE else "#e5e5e5", foreground=FG_COLOR, font=(UI_FONT_FAMILY, 9, "bold"), padding=(6, 5))
+style.configure("Monitor.Horizontal.TProgressbar", troughcolor="#303030" if IS_DARK_MODE else "#e5e5e5", background="#0067c0", lightcolor="#0067c0", darkcolor="#0067c0", borderwidth=0)
 
 
-def refresh_os_theme():
+def apply_theme_mode():
     global IS_DARK_MODE, BG_COLOR, FG_COLOR, ENTRY_BG, ENTRY_FG, TEXT_BG, TEXT_FG
     global MUTED_COLOR, PANEL_BORDER, CARD_NEUTRAL
-    current_dark_mode = not windows_apps_use_light_theme()
+    current_dark_mode = THEME_MODE == "dark" or (
+        THEME_MODE == "system" and not system_uses_light_theme()
+    )
     if current_dark_mode != IS_DARK_MODE:
-        old_values = {BG_COLOR, FG_COLOR, ENTRY_BG, ENTRY_FG, TEXT_BG, TEXT_FG, MUTED_COLOR}
+        was_dark_mode = IS_DARK_MODE
         IS_DARK_MODE = current_dark_mode
         if IS_DARK_MODE:
             BG_COLOR, FG_COLOR = "#202020", "#f3f3f3"
@@ -1412,20 +1443,85 @@ def refresh_os_theme():
         try:
             style.theme_use("clam" if IS_DARK_MODE else "vista")
         except tk.TclError:
-            pass
+            try:
+                style.theme_use("vista" if IS_DARK_MODE else "clam")
+            except tk.TclError:
+                pass
         style.configure("TEntry", fieldbackground=ENTRY_BG, foreground=ENTRY_FG, padding=4)
         style.configure("TCombobox", fieldbackground=ENTRY_BG, foreground=ENTRY_FG, padding=3)
+        style.map("TCombobox", fieldbackground=[("disabled", "#3a3a3a" if IS_DARK_MODE else "#e5e5e5")])
         style.configure("Win11.TButton", background="#2b2b2b" if IS_DARK_MODE else "#ffffff", foreground=FG_COLOR, bordercolor=PANEL_BORDER, padding=(12, 6), relief="flat", focusthickness=1, focuscolor="#0078d4")
+        style.map(
+            "Win11.TButton",
+            background=[
+                ("disabled", "#303030" if IS_DARK_MODE else "#e5e5e5"),
+                ("pressed", "#444444" if IS_DARK_MODE else "#e5e5e5"),
+                ("active", "#383838" if IS_DARK_MODE else "#f5f5f5"),
+            ],
+            foreground=[("disabled", "#777777" if IS_DARK_MODE else "#8a8a8a")],
+        )
         style.configure("Treeview", background=ENTRY_BG, fieldbackground=ENTRY_BG, foreground=FG_COLOR)
+        style.configure("Treeview.Heading", background="#303030" if IS_DARK_MODE else "#e5e5e5", foreground=FG_COLOR)
+        style.configure(
+            "Monitor.Horizontal.TProgressbar",
+            troughcolor="#303030" if IS_DARK_MODE else "#e5e5e5",
+            background="#0067c0",
+            lightcolor="#0067c0",
+            darkcolor="#0067c0",
+            borderwidth=0,
+        )
+        style.configure("TCheckbutton", background=BG_COLOR, foreground=FG_COLOR)
+        style.map(
+            "TCheckbutton",
+            background=[("active", BG_COLOR)],
+            foreground=[("disabled", MUTED_COLOR)],
+        )
+        style.configure("TScrollbar", background="#383838" if IS_DARK_MODE else "#f5f5f5", troughcolor=BG_COLOR)
+
+        def transition_map(pairs):
+            return {
+                dark_color if was_dark_mode else light_color:
+                    dark_color if IS_DARK_MODE else light_color
+                for dark_color, light_color in pairs
+            }
+
+        background_colors = transition_map((
+            ("#202020", "#f3f3f3"),
+            ("#2b2b2b", "#ffffff"),
+            ("#1f1f1f", "#ffffff"),
+            ("#303030", "#e7eef2"),
+            ("#444444", "#d7e2e6"),
+            ("#254634", "#e3f4ed"),
+            ("#4a3b1b", "#fff0d9"),
+            ("#4a2525", "#fde8e7"),
+        ))
+        foreground_colors = transition_map((
+            ("#f3f3f3", "#1a1a1a"),
+            ("#a0a0a0", "#52606d"),
+            ("#4cc2ff", "#176b87"),
+            ("#58d68d", "#087f5b"),
+            ("#ffc857", "#b54708"),
+            ("#ff7b72", "#c92a2a"),
+        ))
 
         def update_widget(widget):
-            try:
-                if widget.cget("bg") in old_values:
-                    widget.configure(bg=BG_COLOR)
-                if widget.cget("fg") in old_values:
-                    widget.configure(fg=FG_COLOR)
-            except (tk.TclError, AttributeError):
-                pass
+            for option, colors in (
+                ("bg", background_colors),
+                ("activebackground", background_colors),
+                ("selectcolor", background_colors),
+                ("highlightbackground", background_colors),
+                ("selectbackground", background_colors),
+                ("fg", foreground_colors),
+                ("activeforeground", foreground_colors),
+                ("insertbackground", foreground_colors),
+                ("highlightcolor", foreground_colors),
+            ):
+                try:
+                    old_color = widget.cget(option)
+                    if old_color in colors:
+                        widget.configure(**{option: colors[old_color]})
+                except (tk.TclError, AttributeError):
+                    pass
             for child in widget.winfo_children():
                 update_widget(child)
 
@@ -1443,8 +1539,50 @@ def refresh_os_theme():
         healthy_label.configure(bg="#254634" if IS_DARK_MODE else "#e3f4ed", fg="#58d68d" if IS_DARK_MODE else "#087f5b")
         warning_label.configure(bg="#4a3b1b" if IS_DARK_MODE else "#fff0d9", fg="#ffc857" if IS_DARK_MODE else "#b54708")
         error_label.configure(bg="#4a2525" if IS_DARK_MODE else "#fde8e7", fg="#ff7b72" if IS_DARK_MODE else "#c92a2a")
+        apply_menu_theme()
+        output_box.tag_config("success", foreground="#58d68d" if IS_DARK_MODE else "#008000")
+        output_box.tag_config("warning", foreground="#ffc857" if IS_DARK_MODE else "#d2691e")
+        output_box.tag_config("error", foreground="#ff7b72" if IS_DARK_MODE else "#ff0000")
+        output_box.tag_config("info", foreground="#4cc2ff" if IS_DARK_MODE else "#0000ff")
+        output_box.tag_config("normal", foreground=TEXT_FG)
+        output_box.tag_config("clickable", foreground="#4cc2ff" if IS_DARK_MODE else "#0000ee", underline=1)
+        if sys.platform == "darwin":
+            root.option_add("*Label.Background", BG_COLOR)
+            root.option_add("*Label.Foreground", FG_COLOR)
+            root.option_add("*Frame.Background", BG_COLOR)
+            root.option_add("*Toplevel.Background", BG_COLOR)
+            root.option_add("*Menu.Background", BG_COLOR)
+            root.option_add("*Menu.Foreground", FG_COLOR)
+            root.option_add("*Entry.Background", ENTRY_BG)
+            root.option_add("*Entry.Foreground", ENTRY_FG)
+            root.option_add("*Text.Background", TEXT_BG)
+            root.option_add("*Text.Foreground", TEXT_FG)
+            try:
+                root.tk_setPalette(
+                    background=BG_COLOR,
+                    foreground=FG_COLOR,
+                    activeBackground="#383838" if IS_DARK_MODE else "#d4e3e8",
+                    activeForeground=FG_COLOR,
+                )
+            except tk.TclError:
+                pass
         update_interval_status()
         update_slack_status()
+        root.update_idletasks()
+
+
+def apply_menu_theme():
+    for menu in (menu_bar, file_menu, settings_menu, view_menu, help_menu):
+        menu.configure(
+            bg=BG_COLOR,
+            fg=FG_COLOR,
+            activebackground="#383838" if IS_DARK_MODE else "#e5e5e5",
+            activeforeground=FG_COLOR,
+        )
+
+
+def refresh_os_theme():
+    apply_theme_mode()
     root.after(1000, refresh_os_theme)
 
 button_font = (UI_FONT_FAMILY, 10)
@@ -1459,6 +1597,8 @@ menu_bar.add_cascade(label="File", menu=file_menu)
 
 # Unified Settings dialog
 def open_settings():
+    theme_options = {"Light": "light", "Dark": "dark", "System theme": "system"}
+
     def browse_for_file():
         path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
         if path:
@@ -1466,7 +1606,7 @@ def open_settings():
 
     def save_and_close():
         nonlocal default_file_var, slack_var, slack_enabled_var, interval_minutes_var
-        global current_file, SLACK_WEBHOOK_URL, SLACK_ENABLED
+        global current_file, SLACK_WEBHOOK_URL, SLACK_ENABLED, THEME_MODE
         global INTERVAL_CHECK_ENABLED, INTERVAL_MINUTES, INTERVAL_UNIT
         new_file = default_file_var.get().strip()
         new_slack = slack_var.get().strip()
@@ -1494,6 +1634,10 @@ def open_settings():
             new_interval_minutes = requested_interval
         else:
             new_interval_minutes = INTERVAL_MINUTES
+        new_theme = theme_options.get(theme_var.get())
+        if new_theme is None:
+            messagebox.showerror("Settings", "Select a valid theme.", parent=settings_win)
+            return
         if new_file:
             if not os.path.isabs(new_file):
                 new_file = os.path.normpath(os.path.join(base_path, new_file))
@@ -1503,6 +1647,8 @@ def open_settings():
         INTERVAL_CHECK_ENABLED = bool(interval_enabled_var.get())
         INTERVAL_MINUTES = new_interval_minutes
         INTERVAL_UNIT = interval_unit_var.get()
+        THEME_MODE = new_theme
+        apply_theme_mode()
         file_label.config(text=f"Using file: {current_file}")
         save_config()
         schedule_interval_check()
@@ -1511,7 +1657,7 @@ def open_settings():
 
     settings_win = tk.Toplevel(root)
     settings_win.title("Settings")
-    settings_win.geometry("700x360")
+    settings_win.geometry("700x410")
     settings_win.transient(root)
     settings_win.resizable(True, False)
     settings_win.columnconfigure(1, weight=1)
@@ -1531,6 +1677,8 @@ def open_settings():
     interval_enabled_var = tk.BooleanVar(value=INTERVAL_CHECK_ENABLED)
     interval_minutes_var = tk.StringVar(value=str(INTERVAL_MINUTES))
     interval_unit_var = tk.StringVar(value=INTERVAL_UNIT)
+    theme_label = next(label for label, mode in theme_options.items() if mode == THEME_MODE)
+    theme_var = tk.StringVar(value=theme_label)
 
     def update_interval_input_state(*args):
         interval_entry.config(state=tk.NORMAL if interval_enabled_var.get() else tk.DISABLED)
@@ -1547,24 +1695,33 @@ def open_settings():
 
     ttk.Checkbutton(settings_win, text="Enable Slack alerts", variable=slack_enabled_var, command=update_slack_input_state).grid(row=1, column=0, columnspan=3, sticky="w", padx=10, pady=8)
 
-    tk.Label(settings_win, text="Slack Webhook URL:", font=label_font).grid(row=2, column=0, sticky="w", padx=10, pady=8)
+    tk.Label(settings_win, text="Slack Webhook URL:", font=label_font, bg=BG_COLOR, fg=FG_COLOR).grid(row=2, column=0, sticky="w", padx=10, pady=8)
     slack_entry = ttk.Entry(settings_win, textvariable=slack_var, font=text_font)
     slack_entry.grid(row=2, column=1, columnspan=2, padx=6, pady=8, sticky="ew")
     update_slack_input_state()
 
-    tk.Label(settings_win, text="Automatic check interval", font=(UI_FONT_FAMILY, 11, "bold"), fg="#12343b").grid(row=3, column=0, columnspan=3, sticky="w", padx=10, pady=(14, 4))
-    ttk.Checkbutton(settings_win, text="Enable automatic interval checks", variable=interval_enabled_var, command=update_interval_input_state).grid(row=4, column=0, columnspan=2, sticky="w", padx=10, pady=8)
-    tk.Label(settings_win, text="Check every:", font=label_font).grid(row=5, column=0, sticky="w", padx=10, pady=8)
-    interval_controls = tk.Frame(settings_win)
-    interval_controls.grid(row=5, column=1, columnspan=2, sticky="w", padx=6, pady=8)
+    tk.Label(settings_win, text="Theme:", font=label_font, bg=BG_COLOR, fg=FG_COLOR).grid(row=3, column=0, sticky="w", padx=10, pady=8)
+    ttk.Combobox(
+        settings_win,
+        textvariable=theme_var,
+        values=tuple(theme_options),
+        state="readonly",
+        width=16,
+    ).grid(row=3, column=1, columnspan=2, sticky="w", padx=6, pady=8)
+
+    tk.Label(settings_win, text="Automatic check interval", font=(UI_FONT_FAMILY, 11, "bold"), fg=FG_COLOR, bg=BG_COLOR).grid(row=4, column=0, columnspan=3, sticky="w", padx=10, pady=(14, 4))
+    ttk.Checkbutton(settings_win, text="Enable automatic interval checks", variable=interval_enabled_var, command=update_interval_input_state).grid(row=5, column=0, columnspan=2, sticky="w", padx=10, pady=8)
+    tk.Label(settings_win, text="Check every:", font=label_font, bg=BG_COLOR, fg=FG_COLOR).grid(row=6, column=0, sticky="w", padx=10, pady=8)
+    interval_controls = tk.Frame(settings_win, bg=BG_COLOR)
+    interval_controls.grid(row=6, column=1, columnspan=2, sticky="w", padx=6, pady=8)
     interval_entry = ttk.Entry(interval_controls, textvariable=interval_minutes_var, width=8, font=text_font)
     interval_entry.pack(side=tk.LEFT)
     interval_unit_combo = ttk.Combobox(interval_controls, textvariable=interval_unit_var, values=("Seconds", "Minutes", "Hours"), state="readonly", width=10, font=text_font)
     interval_unit_combo.pack(side=tk.LEFT, padx=0)
     update_interval_input_state()
 
-    btn_frame = tk.Frame(settings_win)
-    btn_frame.grid(row=6, column=0, columnspan=3, sticky="e", padx=6, pady=(12, 0))
+    btn_frame = tk.Frame(settings_win, bg=BG_COLOR)
+    btn_frame.grid(row=7, column=0, columnspan=3, sticky="e", padx=6, pady=(12, 0))
     save_button = ttk.Button(btn_frame, text="Save", command=save_and_close, width=12)
     save_button.pack(side=tk.RIGHT, padx=(6,0))
     style_action_button(save_button, "primary")
@@ -1586,6 +1743,7 @@ help_menu.add_command(label="About", command=show_about)
 help_menu.add_command(label="Version", command=show_version)
 menu_bar.add_cascade(label="Help", menu=help_menu)
 root.config(menu=menu_bar)
+apply_menu_theme()
 root_frame = tk.Frame(root, bg=BG_COLOR)
 root_frame.pack(fill=tk.X, padx=12, pady=(10, 0))
 
@@ -1737,12 +1895,12 @@ results_area.pack(padx=12, pady=(4, 4), fill=tk.BOTH, expand=True)
 output_box = scrolledtext.ScrolledText(results_area, width=104, height=20, bd=1, relief=tk.SUNKEN, font=(MONO_FONT_FAMILY, 10), bg=TEXT_BG, fg=TEXT_FG, padx=8, pady=6)
 output_box.pack(fill=tk.BOTH, expand=True)
 output_box.config(state=tk.DISABLED)
-output_box.tag_config("success", foreground="#008000")
-output_box.tag_config("warning", foreground="#d2691e")
-output_box.tag_config("error", foreground="#ff0000")
-output_box.tag_config("info", foreground="#0000ff")
-output_box.tag_config("normal", foreground="#000000")
-output_box.tag_config("clickable", foreground="#0000ee", underline=1)
+output_box.tag_config("success", foreground="#58d68d" if IS_DARK_MODE else "#008000")
+output_box.tag_config("warning", foreground="#ffc857" if IS_DARK_MODE else "#d2691e")
+output_box.tag_config("error", foreground="#ff7b72" if IS_DARK_MODE else "#ff0000")
+output_box.tag_config("info", foreground="#4cc2ff" if IS_DARK_MODE else "#0000ff")
+output_box.tag_config("normal", foreground=TEXT_FG)
+output_box.tag_config("clickable", foreground="#4cc2ff" if IS_DARK_MODE else "#0000ee", underline=1)
 output_box.tag_bind("clickable", "<Button-1>", on_output_click)
 output_box.tag_bind("clickable", "<Enter>", lambda e: output_box.config(cursor="hand2"))
 output_box.tag_bind("clickable", "<Leave>", lambda e: output_box.config(cursor=""))

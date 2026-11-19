@@ -1,10 +1,11 @@
 {
-  "default_file": "D:/urls - ARM Project.txt",
+  "default_file": "D:/monitor_urls/urls.txt",
   "slack_webhook_url": "sadaASDaDS",
   "slack_enabled": false,
   "interval_check_enabled": true,
-  "interval_minutes": 10,
-  "interval_unit": "Minutes",
-  "window_geometry": "1044x630+17+48",
+  "interval_minutes": 30,
+  "interval_unit": "Seconds",
+  "theme": "light",
+  "window_geometry": "1044x650+2357+213",
   "window_state": "zoomed"
 }

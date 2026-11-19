@@ -13,6 +13,7 @@ A small desktop URL monitoring tool built with Tkinter. It checks a URL list or 
 - Animated branded dashboard header with a custom application icon
 - Separate check history page with health summaries and purge controls
 - Optional Slack alerts configured from Settings
+- Light, dark, and system theme options in Settings
 
 ## Run From Source
 
